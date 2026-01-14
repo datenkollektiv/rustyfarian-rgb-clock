@@ -1,0 +1,13 @@
+.env
+.envrc
+pre-release-checklist.md
+
+/.vscode
+/.claude
+CLAUDE.md
+/.idea
+
+/.embuild
+/target
+/Cargo.lock
+.cargo/config.toml
