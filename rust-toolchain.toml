@@ -1,0 +1,4 @@
+[toolchain]
+channel = "nightly"
+targets = ["riscv32imac-esp-espidf"]
+components = ["rust-src"]

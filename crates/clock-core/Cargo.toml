@@ -1,0 +1,8 @@
+[package]
+name = "clock-core"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+description = "Pure Rust clock index mapping and color utilities - no hardware dependencies"
+
+[dependencies]
