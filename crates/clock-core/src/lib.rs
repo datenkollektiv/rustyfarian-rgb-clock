@@ -154,7 +154,9 @@ mod tests {
     #[test]
     fn test_hour_to_index_all_hours() {
         // Verify all 24 hours map correctly
-        let expected = [11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let expected = [
+            11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+        ];
         for (hour, &expected_idx) in expected.iter().enumerate() {
             assert_eq!(
                 hour_to_index(hour as u8),
@@ -195,9 +197,9 @@ mod tests {
     #[test]
     fn test_minute_to_index_boundaries() {
         // Test the boundaries of each 5-minute segment
-        assert_eq!(minute_to_index(4), 11);  // Last minute of 12 o'clock segment
-        assert_eq!(minute_to_index(5), 0);   // First minute of 1 o'clock segment
-        assert_eq!(minute_to_index(54), 9);  // Last minute of 10 o'clock segment
+        assert_eq!(minute_to_index(4), 11); // Last minute of 12 o'clock segment
+        assert_eq!(minute_to_index(5), 0); // First minute of 1 o'clock segment
+        assert_eq!(minute_to_index(54), 9); // Last minute of 10 o'clock segment
         assert_eq!(minute_to_index(55), 10); // First minute of 11 o'clock segment
         assert_eq!(minute_to_index(59), 10); // Last minute of 11 o'clock segment
     }
@@ -275,7 +277,10 @@ mod tests {
     #[test]
     fn test_add_colors_saturates() {
         // Should saturate at 255, not overflow
-        assert_eq!(add_colors((200, 200, 200), (100, 100, 100)), (255, 255, 255));
+        assert_eq!(
+            add_colors((200, 200, 200), (100, 100, 100)),
+            (255, 255, 255)
+        );
         assert_eq!(add_colors((255, 0, 128), (1, 255, 200)), (255, 255, 255));
     }
 

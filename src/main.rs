@@ -1,15 +1,15 @@
 mod rgb_clock;
 
+use crate::rgb_clock::RGBClock;
 use anyhow::Context;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use esp_idf_hal::peripherals::Peripherals;
-use esp_idf_svc::eventloop::EspSystemEventLoop;
-use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp32_mqtt_manager::{MqttConfig, MqttManager};
 use esp32_wifi_manager::{WiFiConfig, WiFiManager};
 use esp32_ws2812_rmt::WS2812RMT;
-use crate::rgb_clock::RGBClock;
+use esp_idf_hal::peripherals::Peripherals;
+use esp_idf_svc::eventloop::EspSystemEventLoop;
+use esp_idf_svc::nvs::EspDefaultNvsPartition;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 fn main() -> anyhow::Result<()> {
     // It is necessary to call this function once. Otherwise, some patches to the runtime
@@ -32,7 +32,13 @@ fn main() -> anyhow::Result<()> {
 
     // Initialize Wi-Fi with an LED indicator
     let wifi_config = WiFiConfig::new(WIFI_SSID, WIFI_PASS);
-    let wifi = WiFiManager::new(peripherals.modem, sys_loop, Some(nvs), wifi_config, Some(&mut driver))?;
+    let wifi = WiFiManager::new(
+        peripherals.modem,
+        sys_loop,
+        Some(nvs),
+        wifi_config,
+        Some(&mut driver),
+    )?;
 
     // Wait some seconds for an IP address
     if let Some(ip) = wifi.get_ip(10000)? {
@@ -50,10 +56,8 @@ fn main() -> anyhow::Result<()> {
 
     // Start the startup animation in a background thread
     let animation_cancel = Arc::new(AtomicBool::new(false));
-    let _animation_handle = rgb_clock::run_startup_animation(
-        Arc::clone(&clock),
-        Arc::clone(&animation_cancel),
-    );
+    let _animation_handle =
+        rgb_clock::run_startup_animation(Arc::clone(&clock), Arc::clone(&animation_cancel));
 
     // MQTT configuration from .env
     const MQTT_HOST: &str = env!("MQTT_HOST");

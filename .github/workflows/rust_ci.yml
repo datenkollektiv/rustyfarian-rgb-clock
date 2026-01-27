@@ -35,17 +35,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup ESP-RS toolchain (RISC-V)
-        uses: esp-rs/xtensa-toolchain@v1.6
-        with:
-          default: true
-          ldproxy: true
+      - name: Install pinned nightly toolchain
+        run: |
+          rustup toolchain install nightly-2025-12-01
+          rustup component add rust-src clippy --toolchain nightly-2025-12-01
+          rustup default nightly-2025-12-01
+
+      - name: Install ldproxy
+        run: cargo install ldproxy
 
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
 
       - name: Setup cargo config
         run: cp .cargo/config.toml.dist .cargo/config.toml
+
+      - name: Create CI environment file
+        run: |
+          cat > .env << 'EOF'
+          WIFI_SSID=ci-test-ssid
+          WIFI_PASS=ci-test-pass
+          MQTT_HOST=localhost
+          MQTT_PORT=1883
+          MQTT_CLIENT_ID=ci-test-client
+          EOF
 
       - name: Build
         run: cargo build --release

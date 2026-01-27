@@ -21,7 +21,26 @@ cargo run --release
 
 Requires a `.env` file with Wi-Fi and MQTT credentials (see `.env.example`).
 
-Since the default flash size of 1MB may be insufficient:
+## MQTT Time Format
+
+The clock subscribes to the `tick` topic and expects JSON messages:
+
+```json
+{"hour": 14, "minute": 23, "second": 45}
+```
+
+Example using mosquitto_pub:
+
+```bash
+mosquitto_pub -h <MQTT_HOST> -t tick -m '{"hour":14,"minute":23,"second":45}'
+```
+
+Fields:
+- `hour`: 0-23 (24-hour format, mapped to 12 positions)
+- `minute`: 0-59 (mapped to 12 positions)
+- `second`: 0-59 (mapped to 12 positions)
+
+Since the default flash size of 1MB may be not enough:
 
 ```shell
 cargo espflash flash --partition-table partitions.csv --monitor
