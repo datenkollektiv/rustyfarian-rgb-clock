@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 // Default colors for clock hands
-const DEFAULT_HOUR_COLOR: Rgb = (0, 0, 1);   // Blue
+const DEFAULT_HOUR_COLOR: Rgb = (0, 0, 1); // Blue
 const DEFAULT_MINUTE_COLOR: Rgb = (0, 1, 0); // Green
 const DEFAULT_SECOND_COLOR: Rgb = (1, 0, 0); // Red
 const DEFAULT_BRIGHTNESS: u8 = 10;
@@ -24,7 +24,7 @@ pub struct RGBClock<'a> {
     hours_base_color: Rgb,
     minutes_base_color: Rgb,
     seconds_base_color: Rgb,
-    hue: u8,
+    brightness: u8,
     driver: WS2812RMT<'a>,
     state: [Rgb; 12],
 }
@@ -43,7 +43,7 @@ impl<'a> RGBClock<'a> {
             hours_base_color: DEFAULT_HOUR_COLOR,
             minutes_base_color: DEFAULT_MINUTE_COLOR,
             seconds_base_color: DEFAULT_SECOND_COLOR,
-            hue: DEFAULT_BRIGHTNESS,
+            brightness: DEFAULT_BRIGHTNESS,
             driver,
             state: [(0, 0, 0); 12],
         };
@@ -119,7 +119,7 @@ impl<'a> RGBClock<'a> {
     /// Updates the physical LEDs with the current state.
     pub fn show(&mut self) -> Result<()> {
         let pixels: [RGB8; 12] = self.state.map(|(r, g, b)| {
-            let scaled = scale_color((r, g, b), self.hue);
+            let scaled = scale_color((r, g, b), self.brightness);
             RGB8::new(scaled.0, scaled.1, scaled.2)
         });
         debug!("Showing state: {:?}", pixels);
