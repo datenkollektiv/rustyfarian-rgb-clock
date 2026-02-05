@@ -22,8 +22,7 @@ esp-idf-svc = "0.51"
 clock-core = { path = "crates/clock-core" }
 
 # External crates from rustyfarian-ws2812 repo
-led-effects = { git = "https://github.com/datenkollektiv/rustyfarian-ws2812" }
-ws2812-core = { git = "https://github.com/datenkollektiv/rustyfarian-ws2812" }
+ferriswheel = { git = "https://github.com/datenkollektiv/rustyfarian-ws2812" }
 esp32-ws2812-rmt = { git = "https://github.com/datenkollektiv/rustyfarian-ws2812" }
 
 # External crates from rustyfarian-network repo
@@ -70,6 +69,7 @@ clock-core.workspace = true
 esp32-mqtt-manager.workspace = true
 esp32-wifi-manager.workspace = true
 esp32-ws2812-rmt.workspace = true
+ferriswheel.workspace = true
 
 # --- Optional Embassy Integration ---
 # esp-idf-svc = { version = "0.51", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }

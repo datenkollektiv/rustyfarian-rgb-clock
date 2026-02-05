@@ -16,7 +16,7 @@ cargo build --release
 Flash and monitor (requires espflash)
 
 ```shell
-cargo run --release
+cargo espflash flash --partition-table partitions.csv --monitor
 ```
 
 Requires a `.env` file with Wi-Fi and MQTT credentials (see `.env.example`).
@@ -50,13 +50,13 @@ cargo espflash flash --partition-table partitions.csv --monitor
 
 This project uses external crates from companion repositories:
 
-| Crate | Repository | Description |
-|-------|------------|-------------|
-| `led-effects` | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812) | LED animation effects (no_std) |
-| `ws2812-core` | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812) | WS2812 color utilities (no_std) |
-| `esp32-ws2812-rmt` | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812) | ESP32 RMT driver for WS2812 |
-| `esp32-wifi-manager` | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | WiFi connection management |
-| `esp32-mqtt-manager` | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | MQTT client with callbacks |
+| Crate                | Repository                                                                   | Description                              |
+|:---------------------|:-----------------------------------------------------------------------------|:-----------------------------------------|
+| `led-effects`        | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | LED status indicators and pulse effects  |
+| `ferriswheel`        | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | RGB ring effects (rainbow animations)    |
+| `esp32-ws2812-rmt`   | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | ESP32 RMT driver for WS2812              |
+| `esp32-wifi-manager` | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | WiFi connection management               |
+| `esp32-mqtt-manager` | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | MQTT client with callbacks               |
 
 ## Project Structure
 

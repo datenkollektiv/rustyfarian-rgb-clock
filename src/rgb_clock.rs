@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clock_core::{add_colors, hour_to_index, minute_to_index, scale_color, second_to_index, Rgb};
 use esp32_ws2812_rmt::WS2812RMT;
+use ferriswheel::{Direction, RainbowEffect};
 use log::debug;
 use rgb::RGB8;
 use serde::{Deserialize, Serialize};
@@ -13,10 +14,10 @@ const DEFAULT_MINUTE_COLOR: Rgb = (0, 1, 0); // Green
 const DEFAULT_SECOND_COLOR: Rgb = (1, 0, 0); // Red
 const DEFAULT_BRIGHTNESS: u8 = 10;
 
-// Animation timing (milliseconds)
-const ANIMATION_HOUR_DELAY_MS: u32 = 100;
-const ANIMATION_MINUTE_DELAY_MS: u32 = 20;
-const ANIMATION_SECOND_DELAY_MS: u32 = 20;
+// Rainbow animation settings
+const RAINBOW_SPEED: u8 = 3;
+const RAINBOW_BRIGHTNESS: u8 = 30;
+const RAINBOW_FRAME_DELAY_MS: u32 = 30;
 
 /// An RGB LED clock that represents time using 12 RGB LEDs arranged in a circle.
 /// Each LED corresponds to an hour position on a traditional clock face.
@@ -51,42 +52,6 @@ impl<'a> RGBClock<'a> {
         Ok(clock)
     }
 
-    /// Sets only the hour indicator on the clock.
-    ///
-    /// Note: This method clears all LEDs before setting the hour indicator.
-    ///
-    /// # Arguments
-    /// * `hour` - The hour to display (0-23, mapped to 0-11 for 12-hour display)
-    pub fn set_hour(&mut self, hour: u8) -> Result<()> {
-        self.clear()?;
-        self.state[hour_to_index(hour)] = self.hours_base_color;
-        self.show()
-    }
-
-    /// Sets only the minute indicator on the clock.
-    ///
-    /// Note: This method clears all LEDs before setting the minute indicator.
-    ///
-    /// # Arguments
-    /// * `minute` - The minute to display (0-59, mapped to 0-11 for 12-hour display)
-    pub fn set_minute(&mut self, minute: u8) -> Result<()> {
-        self.clear()?;
-        self.state[minute_to_index(minute)] = self.minutes_base_color;
-        self.show()
-    }
-
-    /// Sets only the second indicator on the clock.
-    ///
-    /// Note: This method clears all LEDs before setting the second indicator.
-    ///
-    /// # Arguments
-    /// * `second` - The second to display (0-59, mapped to 0-11 for 12-hour display)
-    pub fn set_second(&mut self, second: u8) -> Result<()> {
-        self.clear()?;
-        self.state[second_to_index(second)] = self.seconds_base_color;
-        self.show()
-    }
-
     /// Sets the complete time on the clock (hours, minutes, and seconds).
     ///
     /// # Arguments
@@ -116,6 +81,15 @@ impl<'a> RGBClock<'a> {
         Ok(())
     }
 
+    /// Sets all pixels directly from an RGB8 buffer.
+    ///
+    /// This bypasses the internal state and writes directly to the LEDs.
+    /// Useful for effects like `RainbowEffect` that produce RGB8 buffers.
+    pub fn set_pixels(&mut self, pixels: &[RGB8; 12]) -> Result<()> {
+        self.driver.set_pixels_slice(pixels.as_slice())?;
+        Ok(())
+    }
+
     /// Updates the physical LEDs with the current state.
     pub fn show(&mut self) -> Result<()> {
         let pixels: [RGB8; 12] = self.state.map(|(r, g, b)| {
@@ -128,11 +102,12 @@ impl<'a> RGBClock<'a> {
     }
 }
 
-/// Runs the startup animation in a background thread.
+/// Runs a rainbow startup animation in a background thread.
 ///
-/// The animation cycles through hours, minutes, and seconds to test all LEDs.
-/// It can be cancelled by setting the `cancel` flag to `true`, which happens
-/// automatically when `set_local_time()` is called.
+/// Uses `RainbowEffect` from `ferriswheel` to create a smooth rainbow
+/// animation that rotates around the clock face until cancelled.
+/// The animation is cancelled automatically when the first MQTT time
+/// message is received (which sets the cancellation flag).
 ///
 /// # Arguments
 /// * `clock` - Shared reference to the RGB clock
@@ -147,60 +122,48 @@ pub fn run_startup_animation(
     std::thread::spawn(move || {
         use esp_idf_hal::delay::FreeRtos;
 
-        log::info!("Starting startup animation");
+        log::info!("Starting rainbow startup animation");
 
-        // Run through hours
-        for hour in 0..12u8 {
-            if cancel.load(Ordering::Relaxed) {
-                log::info!("Startup animation cancelled during hours");
+        let mut rainbow = match RainbowEffect::new(12) {
+            Ok(r) => match r.with_speed(RAINBOW_SPEED) {
+                Ok(r) => r
+                    .with_brightness(RAINBOW_BRIGHTNESS)
+                    .with_direction(Direction::Clockwise),
+                Err(e) => {
+                    log::error!("Failed to set rainbow speed: {}", e);
+                    return;
+                }
+            },
+            Err(e) => {
+                log::error!("Failed to create rainbow effect: {}", e);
                 return;
             }
+        };
+
+        let mut buffer = [RGB8::default(); 12];
+
+        loop {
+            if cancel.load(Ordering::Relaxed) {
+                log::info!("Rainbow animation cancelled");
+                return;
+            }
+
+            if let Err(e) = rainbow.update(&mut buffer) {
+                log::warn!("Rainbow update error: {}", e);
+                return;
+            }
+
             match clock.lock() {
                 Ok(mut c) => {
-                    if let Err(e) = c.set_hour(hour) {
-                        log::warn!("Animation error: {:?}", e);
+                    if let Err(e) = c.set_pixels(&buffer) {
+                        log::warn!("Animation display error: {:?}", e);
                     }
                 }
                 Err(e) => log::error!("Clock mutex poisoned: {:?}", e),
             }
-            FreeRtos::delay_ms(ANIMATION_HOUR_DELAY_MS);
-        }
 
-        // Run through minutes
-        for minute in 0..60u8 {
-            if cancel.load(Ordering::Relaxed) {
-                log::info!("Startup animation cancelled during minutes");
-                return;
-            }
-            match clock.lock() {
-                Ok(mut c) => {
-                    if let Err(e) = c.set_minute(minute) {
-                        log::warn!("Animation error: {:?}", e);
-                    }
-                }
-                Err(e) => log::error!("Clock mutex poisoned: {:?}", e),
-            }
-            FreeRtos::delay_ms(ANIMATION_MINUTE_DELAY_MS);
+            FreeRtos::delay_ms(RAINBOW_FRAME_DELAY_MS);
         }
-
-        // Run through seconds
-        for second in 0..60u8 {
-            if cancel.load(Ordering::Relaxed) {
-                log::info!("Startup animation cancelled during seconds");
-                return;
-            }
-            match clock.lock() {
-                Ok(mut c) => {
-                    if let Err(e) = c.set_second(second) {
-                        log::warn!("Animation error: {:?}", e);
-                    }
-                }
-                Err(e) => log::error!("Clock mutex poisoned: {:?}", e),
-            }
-            FreeRtos::delay_ms(ANIMATION_SECOND_DELAY_MS);
-        }
-
-        log::info!("Startup animation completed");
     })
 }
 
