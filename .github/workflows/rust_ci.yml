@@ -13,6 +13,9 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # ===========================================================================
+  # Tier 1: Fast checks (formatting, linting)
+  # ===========================================================================
   format:
     name: Check Formatting
     runs-on: ubuntu-latest
@@ -28,6 +31,28 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check --color always
 
+  # ===========================================================================
+  # Tier 1: Host unit tests (clock-core)
+  # ===========================================================================
+  host-tests:
+    name: Host Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Enable caching
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run clock-core tests
+        run: cargo test -p clock-core --lib
+
+  # ===========================================================================
+  # Tier 1: Build and Clippy for ESP32-C6
+  # ===========================================================================
   build:
     name: Build & Clippy (ESP32-C6)
     runs-on: ubuntu-latest
@@ -53,11 +78,11 @@ jobs:
       - name: Create CI environment file
         run: |
           cat > .env << 'EOF'
-          WIFI_SSID=ci-test-ssid
-          WIFI_PASS=ci-test-pass
-          MQTT_HOST=localhost
+          WIFI_SSID=Wokwi-GUEST
+          WIFI_PASS=
+          MQTT_HOST=test.mosquitto.org
           MQTT_PORT=1883
-          MQTT_CLIENT_ID=ci-test-client
+          MQTT_CLIENT_ID=wokwi-rgb-clock-ci
           EOF
 
       - name: Build
@@ -65,3 +90,66 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --all-targets --workspace -- -D warnings
+
+      # Upload firmware for Wokwi job
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock
+          retention-days: 1
+
+  # ===========================================================================
+  # Tier 2: Wokwi Simulation
+  # ===========================================================================
+  wokwi:
+    name: Wokwi Simulation
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download firmware artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: target/riscv32imac-esp-espidf/release/
+
+      - name: Create screenshots directory
+        run: mkdir -p screenshots
+
+      - name: "Wokwi: Boot and Rainbow Animation"
+        uses: wokwi/wokwi-ci-action@v1
+        with:
+          token: ${{ secrets.WOKWI_CLI_TOKEN }}
+          timeout: 120000
+          scenario: wokwi/test-startup.yaml
+        continue-on-error: true
+        id: wokwi-startup
+
+      - name: "Wokwi: Rainbow Animation Frames"
+        uses: wokwi/wokwi-ci-action@v1
+        with:
+          token: ${{ secrets.WOKWI_CLI_TOKEN }}
+          timeout: 60000
+          scenario: wokwi/test-rainbow-frames.yaml
+        continue-on-error: true
+        id: wokwi-frames
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wokwi-screenshots
+          path: screenshots/
+          retention-days: 7
+
+      - name: Check Wokwi results
+        run: |
+          if [[ "${{ steps.wokwi-startup.outcome }}" == "failure" ]]; then
+            echo "::warning::Wokwi startup test failed - check screenshots"
+          fi
+          if [[ "${{ steps.wokwi-frames.outcome }}" == "failure" ]]; then
+            echo "::warning::Wokwi frames test failed - check screenshots"
+          fi

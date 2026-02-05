@@ -1,0 +1,26 @@
+# Wokwi Automation Scenario: Boot and Rainbow Animation
+# Verifies firmware boots correctly and starts the rainbow startup animation
+# https://docs.wokwi.com/wokwi-ci/automation-scenarios
+
+name: Boot and Rainbow Animation
+version: 1
+
+steps:
+  # Wait for ESP-IDF boot to complete
+  - wait-serial: "Starting rainbow startup animation"
+    timeout: 30000
+
+  # Let the rainbow animation run for a bit
+  - delay: 2000
+
+  # Capture the rainbow animation in progress
+  - screenshot:
+      file: screenshots/rainbow-animation.png
+
+  # Wait for main setup to complete
+  - wait-serial: "Setup complete"
+    timeout: 60000
+
+  # Final screenshot showing the clock is ready
+  - screenshot:
+      file: screenshots/setup-complete.png

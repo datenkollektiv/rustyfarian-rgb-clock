@@ -1,0 +1,12 @@
+# Wokwi CI Configuration for rustyfarian-rgb-clock
+# https://docs.wokwi.com/wokwi-ci/getting-started
+
+[wokwi]
+version = 1
+
+# Firmware paths for ESP32-C6 (ESP-IDF target)
+firmware = "target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock"
+elf = "target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock"
+
+# Timeout for simulation (ms) - 2 minutes should be enough for boot + animation
+timeout = 120000

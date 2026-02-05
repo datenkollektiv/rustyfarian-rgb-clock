@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "author": "datenkollektiv",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-c6-devkitc-1",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-neopixel-ring",
+      "id": "clock-ring",
+      "top": 250,
+      "left": 0,
+      "attrs": {
+        "pixels": "12"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "onboard-led",
+      "top": 100,
+      "left": 250,
+      "attrs": {
+        "color": "white",
+        "label": "Status"
+      }
+    }
+  ],
+  "connections": [
+    ["esp:10", "clock-ring:DIN", "green", ["v10", "h-50"]],
+    ["esp:GND.1", "clock-ring:GND", "black", ["v20", "h-60"]],
+    ["esp:3V3", "clock-ring:VCC", "red", ["v30", "h-70"]],
+    ["esp:8", "onboard-led:A", "gold", ["h20"]],
+    ["esp:GND.2", "onboard-led:C", "black", ["h30"]]
+  ],
+  "serialMonitor": {
+    "display": "auto"
+  }
+}
