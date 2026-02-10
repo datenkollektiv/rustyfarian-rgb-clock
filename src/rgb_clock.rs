@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clock_core::{add_colors, hour_to_index, minute_to_index, scale_color, second_to_index, Rgb};
-use esp32_ws2812_rmt::WS2812RMT;
+use esp_idf_ws2812_rmt::WS2812RMT;
 use ferriswheel::{Direction, RainbowEffect};
 use log::debug;
 use rgb::RGB8;
