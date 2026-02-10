@@ -8,21 +8,24 @@ version: 1
 steps:
   # Wait for animation to start
   - wait-serial: "Starting rainbow startup animation"
-    timeout: 30000
 
   # Capture multiple frames to verify animation is progressing
   - delay: 500
-  - screenshot:
-      file: screenshots/rainbow-frame-1.png
+  - take-screenshot:
+      part-id: clock-ring
+      save-to: screenshots/rainbow-frame-1.png
 
   - delay: 500
-  - screenshot:
-      file: screenshots/rainbow-frame-2.png
+  - take-screenshot:
+      part-id: clock-ring
+      save-to: screenshots/rainbow-frame-2.png
 
   - delay: 500
-  - screenshot:
-      file: screenshots/rainbow-frame-3.png
+  - take-screenshot:
+      part-id: clock-ring
+      save-to: screenshots/rainbow-frame-3.png
 
   - delay: 500
-  - screenshot:
-      file: screenshots/rainbow-frame-4.png
+  - take-screenshot:
+      part-id: clock-ring
+      save-to: screenshots/rainbow-frame-4.png
