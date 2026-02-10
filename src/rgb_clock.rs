@@ -1,9 +1,9 @@
 use anyhow::Result;
 use clock_core::{add_colors, hour_to_index, minute_to_index, scale_color, second_to_index, Rgb};
-use esp_idf_ws2812_rmt::WS2812RMT;
 use ferriswheel::{Direction, RainbowEffect};
 use log::debug;
 use rgb::RGB8;
+use rustyfarian_esp_idf_ws2812::WS2812RMT;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};

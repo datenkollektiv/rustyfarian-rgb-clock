@@ -2,12 +2,12 @@ mod rgb_clock;
 
 use crate::rgb_clock::RGBClock;
 use anyhow::Context;
-use esp32_mqtt_manager::{MqttConfig, MqttManager};
-use esp32_wifi_manager::{WiFiConfig, WiFiManager};
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
-use esp_idf_ws2812_rmt::WS2812RMT;
+use rustyfarian_esp_idf_mqtt::{MqttConfig, MqttManager};
+use rustyfarian_esp_idf_wifi::{WiFiConfig, WiFiManager};
+use rustyfarian_esp_idf_ws2812::WS2812RMT;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
