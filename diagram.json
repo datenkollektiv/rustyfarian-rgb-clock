@@ -11,7 +11,7 @@
       "attrs": {}
     },
     {
-      "type": "wokwi-neopixel-ring",
+      "type": "wokwi-led-ring",
       "id": "clock-ring",
       "top": 250,
       "left": 0,

@@ -8,19 +8,19 @@ version: 1
 steps:
   # Wait for ESP-IDF boot to complete
   - wait-serial: "Starting rainbow startup animation"
-    timeout: 30000
 
   # Let the rainbow animation run for a bit
   - delay: 2000
 
   # Capture the rainbow animation in progress
-  - screenshot:
-      file: screenshots/rainbow-animation.png
+  - take-screenshot:
+      part-id: clock-ring
+      save-to: screenshots/rainbow-animation.png
 
   # Wait for main setup to complete
   - wait-serial: "Setup complete"
-    timeout: 60000
 
   # Final screenshot showing the clock is ready
-  - screenshot:
-      file: screenshots/setup-complete.png
+  - take-screenshot:
+      part-id: clock-ring
+      save-to: screenshots/setup-complete.png
