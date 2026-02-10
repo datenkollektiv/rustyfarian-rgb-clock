@@ -23,11 +23,11 @@ clock-core = { path = "crates/clock-core" }
 
 # External crates from rustyfarian-ws2812 repo
 ferriswheel = { git = "https://github.com/datenkollektiv/rustyfarian-ws2812" }
-esp-idf-ws2812-rmt = { git = "https://github.com/datenkollektiv/rustyfarian-ws2812" }
+rustyfarian-esp-idf-ws2812 = { git = "https://github.com/datenkollektiv/rustyfarian-ws2812" }
 
 # External crates from rustyfarian-network repo
-esp32-mqtt-manager = { git = "https://github.com/datenkollektiv/rustyfarian-network" }
-esp32-wifi-manager = { git = "https://github.com/datenkollektiv/rustyfarian-network" }
+rustyfarian-esp-idf-mqtt = { git = "https://github.com/datenkollektiv/rustyfarian-network" }
+rustyfarian-esp-idf-wifi = { git = "https://github.com/datenkollektiv/rustyfarian-network" }
 
 [package]
 name = "rustyfarian-rgb-clock"
@@ -66,9 +66,9 @@ rgb.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 clock-core.workspace = true
-esp32-mqtt-manager.workspace = true
-esp32-wifi-manager.workspace = true
-esp-idf-ws2812-rmt.workspace = true
+rustyfarian-esp-idf-mqtt.workspace = true
+rustyfarian-esp-idf-wifi.workspace = true
+rustyfarian-esp-idf-ws2812.workspace = true
 ferriswheel.workspace = true
 
 # --- Optional Embassy Integration ---

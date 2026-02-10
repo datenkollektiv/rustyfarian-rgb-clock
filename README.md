@@ -54,9 +54,9 @@ This project uses external crates from companion repositories:
 |:---------------------|:-----------------------------------------------------------------------------|:-----------------------------------------|
 | `led-effects`        | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | LED status indicators and pulse effects  |
 | `ferriswheel`        | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | RGB ring effects (rainbow animations)    |
-| `esp-idf-ws2812-rmt` | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | ESP-IDF RMT driver for WS2812            |
-| `esp32-wifi-manager` | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | WiFi connection management               |
-| `esp32-mqtt-manager` | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | MQTT client with callbacks               |
+| `rustyfarian-esp-idf-ws2812` | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | ESP-IDF RMT driver for WS2812    |
+| `rustyfarian-esp-idf-wifi`  | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | WiFi connection management       |
+| `rustyfarian-esp-idf-mqtt`  | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | MQTT client with callbacks       |
 
 ## Project Structure
 
