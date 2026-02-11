@@ -13,19 +13,19 @@ steps:
   - delay: 500ms
   - take-screenshot:
       part-id: clock-ring
-      save-to: screenshots/rainbow-frame-1.png
+      save-to: ../screenshots/rainbow-frame-1.png
 
   - delay: 500ms
   - take-screenshot:
       part-id: clock-ring
-      save-to: screenshots/rainbow-frame-2.png
+      save-to: ../screenshots/rainbow-frame-2.png
 
   - delay: 500ms
   - take-screenshot:
       part-id: clock-ring
-      save-to: screenshots/rainbow-frame-3.png
+      save-to: ../screenshots/rainbow-frame-3.png
 
   - delay: 500ms
   - take-screenshot:
       part-id: clock-ring
-      save-to: screenshots/rainbow-frame-4.png
+      save-to: ../screenshots/rainbow-frame-4.png
