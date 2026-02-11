@@ -16,11 +16,3 @@ steps:
   - take-screenshot:
       part-id: clock-ring
       save-to: screenshots/rainbow-animation.png
-
-  # Wait for main setup to complete
-  - wait-serial: "Setup complete"
-
-  # Final screenshot showing the clock is ready
-  - take-screenshot:
-      part-id: clock-ring
-      save-to: screenshots/setup-complete.png

@@ -23,6 +23,18 @@ fn main() -> anyhow::Result<()> {
     let sys_loop = EspSystemEventLoop::take()?;
     let nvs = EspDefaultNvsPartition::take()?;
 
+    // ESP32-C6 GPIO10 for the NeoPixel clock - start animation before WiFi
+    let clock_driver = WS2812RMT::new(peripherals.pins.gpio10, peripherals.rmt.channel1)?;
+    let rgb_clock = RGBClock::new(clock_driver)?;
+
+    // Wrap clock in Arc<Mutex<>> for sharing between threads
+    let clock = Arc::new(Mutex::new(rgb_clock));
+
+    // Start the startup animation in a background thread
+    let animation_cancel = Arc::new(AtomicBool::new(false));
+    let _animation_handle =
+        rgb_clock::run_startup_animation(Arc::clone(&clock), Arc::clone(&animation_cancel));
+
     // WiFi credentials from .env
     const WIFI_SSID: &str = env!("WIFI_SSID");
     const WIFI_PASS: &str = env!("WIFI_PASS");
@@ -46,18 +58,6 @@ fn main() -> anyhow::Result<()> {
     } else {
         log::error!("Failed to get IP address within timeout");
     }
-
-    // ESP32-C6 GPI10 for the NeoPixel clock
-    let clock_driver = WS2812RMT::new(peripherals.pins.gpio10, peripherals.rmt.channel1)?;
-    let rgb_clock = RGBClock::new(clock_driver)?;
-
-    // Wrap clock in Arc<Mutex<>> for sharing between threads
-    let clock = Arc::new(Mutex::new(rgb_clock));
-
-    // Start the startup animation in a background thread
-    let animation_cancel = Arc::new(AtomicBool::new(false));
-    let _animation_handle =
-        rgb_clock::run_startup_animation(Arc::clone(&clock), Arc::clone(&animation_cancel));
 
     // MQTT configuration from .env
     const MQTT_HOST: &str = env!("MQTT_HOST");
