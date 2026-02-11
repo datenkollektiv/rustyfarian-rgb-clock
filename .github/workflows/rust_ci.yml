@@ -85,6 +85,9 @@ jobs:
           MQTT_CLIENT_ID=wokwi-rgb-clock-ci
           EOF
 
+      - name: Configure UART console for Wokwi
+        run: echo "CONFIG_ESP_CONSOLE_UART_DEFAULT=y" >> sdkconfig.defaults
+
       - name: Build
         run: cargo build --release
 
@@ -125,6 +128,7 @@ jobs:
           token: ${{ secrets.WOKWI_CLI_TOKEN }}
           timeout: 120000
           scenario: wokwi/test-startup.yaml
+          serial_log_file: screenshots/startup-serial.log
         continue-on-error: true
         id: wokwi-startup
 
@@ -134,6 +138,7 @@ jobs:
           token: ${{ secrets.WOKWI_CLI_TOKEN }}
           timeout: 60000
           scenario: wokwi/test-rainbow-frames.yaml
+          serial_log_file: screenshots/frames-serial.log
         continue-on-error: true
         id: wokwi-frames
 
