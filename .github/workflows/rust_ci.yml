@@ -66,8 +66,8 @@ jobs:
           rustup component add rust-src clippy --toolchain nightly-2025-12-01
           rustup default nightly-2025-12-01
 
-      - name: Install ldproxy
-        run: cargo install ldproxy
+      - name: Install ldproxy and espflash
+        run: cargo install ldproxy espflash
 
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
@@ -94,12 +94,17 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets --workspace -- -D warnings
 
+      - name: Generate firmware image for Wokwi
+        run: espflash save-image --chip esp32c6 --flash-size 4mb --merge target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock.bin
+
       # Upload firmware for Wokwi job
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
           name: firmware
-          path: target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock
+          path: |
+            target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock
+            target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock.bin
           retention-days: 1
 
   # ===========================================================================
