@@ -31,6 +31,8 @@
     }
   ],
   "connections": [
+    ["esp:TX", "$serialMonitor:RX", "", []],
+    ["esp:RX", "$serialMonitor:TX", "", []],
     ["esp:10", "clock-ring:DIN", "green", ["v10", "h-50"]],
     ["esp:GND.1", "clock-ring:GND", "black", ["v20", "h-60"]],
     ["esp:3V3", "clock-ring:VCC", "red", ["v30", "h-70"]],
