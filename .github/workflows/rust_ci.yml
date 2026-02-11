@@ -95,7 +95,13 @@ jobs:
         run: cargo clippy --all-targets --workspace -- -D warnings
 
       - name: Generate firmware image for Wokwi
-        run: espflash save-image --chip esp32c6 --flash-size 4mb --merge target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock.bin
+        run: |
+          BOOTLOADER=$(ls -t target/riscv32imac-esp-espidf/release/build/esp-idf-sys-*/out/build/bootloader/bootloader.bin | head -1)
+          espflash save-image --chip esp32c6 --flash-size 4mb --merge \
+            --bootloader "$BOOTLOADER" \
+            --partition-table partitions.csv \
+            target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock \
+            target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock.bin
 
       # Upload firmware for Wokwi job
       - name: Upload firmware artifact
