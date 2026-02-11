@@ -15,4 +15,4 @@ steps:
   # Capture the rainbow animation in progress
   - take-screenshot:
       part-id: clock-ring
-      save-to: screenshots/rainbow-animation.png
+      save-to: ../screenshots/rainbow-animation.png
