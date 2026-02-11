@@ -10,7 +10,7 @@ steps:
   - wait-serial: "Starting rainbow startup animation"
 
   # Let the rainbow animation run for a bit
-  - delay: 2000
+  - delay: 2000ms
 
   # Capture the rainbow animation in progress
   - take-screenshot:
