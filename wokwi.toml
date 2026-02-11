@@ -5,7 +5,9 @@
 version = 1
 
 # Firmware paths for ESP32-C6 (ESP-IDF target)
-firmware = "target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock"
+# firmware: merged binary (bootloader + partition table + app) for flash simulation
+# elf: ELF file for symbol resolution and debugging
+firmware = "target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock.bin"
 elf = "target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock"
 
 # Timeout for simulation (ms) - 2 minutes should be enough for boot + animation
