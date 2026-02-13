@@ -9,17 +9,24 @@ An ESP32-C6 RGB LED clock that displays time using 12 WS2812 NeoPixel LEDs arran
 
 Build
 
-```shell
-cargo build --release
+```sh
+just build
 ```
 
 Flash and monitor (requires espflash)
 
-```shell
-cargo espflash flash --partition-table partitions.csv --monitor
+```sh
+just flash
+```
+
+Run all pre-commit checks (format, check, clippy, test)
+
+```sh
+just verify
 ```
 
 Requires a `.env` file with Wi-Fi and MQTT credentials (see `.env.example`).
+Run `just setup-cargo-config` to create `.cargo/config.toml` from the template.
 
 ## MQTT Time Format
 
@@ -31,7 +38,7 @@ The clock subscribes to the `tick` topic and expects JSON messages:
 
 Example using mosquitto_pub:
 
-```bash
+```sh
 mosquitto_pub -h <MQTT_HOST> -t tick -m '{"hour":14,"minute":23,"second":45}'
 ```
 
@@ -40,9 +47,10 @@ Fields:
 - `minute`: 0-59 (mapped to 12 positions)
 - `second`: 0-59 (mapped to 12 positions)
 
-Since the default flash size of 1MB may be not enough:
+Since the default flash size of 1MB may be not enough, `just flash` uses a custom partition table.
+The underlying command is:
 
-```shell
+```sh
 cargo espflash flash --partition-table partitions.csv --monitor
 ```
 
@@ -50,13 +58,13 @@ cargo espflash flash --partition-table partitions.csv --monitor
 
 This project uses external crates from companion repositories:
 
-| Crate                | Repository                                                                   | Description                              |
-|:---------------------|:-----------------------------------------------------------------------------|:-----------------------------------------|
-| `led-effects`        | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | LED status indicators and pulse effects  |
-| `ferriswheel`        | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | RGB ring effects (rainbow animations)    |
-| `rustyfarian-esp-idf-ws2812` | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | ESP-IDF RMT driver for WS2812    |
-| `rustyfarian-esp-idf-wifi`  | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | WiFi connection management       |
-| `rustyfarian-esp-idf-mqtt`  | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | MQTT client with callbacks       |
+| Crate                        | Repository                                                                   | Description                             |
+|:-----------------------------|:-----------------------------------------------------------------------------|:----------------------------------------|
+| `led-effects`                | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | LED status indicators and pulse effects |
+| `ferriswheel`                | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | RGB ring effects (rainbow animations)   |
+| `rustyfarian-esp-idf-ws2812` | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | ESP-IDF RMT driver for WS2812           |
+| `rustyfarian-esp-idf-wifi`   | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | WiFi connection management              |
+| `rustyfarian-esp-idf-mqtt`   | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | MQTT client with callbacks              |
 
 ## Project Structure
 

@@ -71,7 +71,7 @@ fn main() -> anyhow::Result<()> {
         .parse()
         .context("MQTT_PORT must be a valid port number (0-65535)")?;
     let mqtt_config = MqttConfig::new(MQTT_HOST, mqtt_port, MQTT_CLIENT_ID);
-    let mut _mqtt = MqttManager::new(mqtt_config, "tick", move |data: &[u8]| {
+    let mut _mqtt = MqttManager::new(mqtt_config, &["tick"], move |_topic: &str, data: &[u8]| {
         use rgb_clock::LocalTime;
 
         // Cancel any running startup animation on the first time update
@@ -90,6 +90,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
     })?;
+    #[allow(deprecated)]
     _mqtt.send_startup_message()?;
 
     log::info!("Setup complete, parking main thread");
