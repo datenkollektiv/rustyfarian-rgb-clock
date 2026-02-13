@@ -130,6 +130,9 @@ jobs:
           name: firmware
           path: target/riscv32imac-esp-espidf/release/
 
+      - name: Restore executable permissions
+        run: chmod +x target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock
+
       - name: Create screenshots directory
         run: mkdir -p screenshots
 
@@ -162,10 +165,14 @@ jobs:
           retention-days: 7
 
       - name: Check Wokwi results
+        if: always()
         run: |
           if [[ "${{ steps.wokwi-startup.outcome }}" == "failure" ]]; then
             echo "::warning::Wokwi startup test failed - check screenshots"
           fi
           if [[ "${{ steps.wokwi-frames.outcome }}" == "failure" ]]; then
             echo "::warning::Wokwi frames test failed - check screenshots"
+          fi
+          if grep -qi "panic\|abort\|exception" screenshots/*.log 2>/dev/null; then
+            echo "::error::Critical errors found in Wokwi serial logs"
           fi
