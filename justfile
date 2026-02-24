@@ -4,7 +4,7 @@
 # .cargo/config.toml, so recipes that touch platform-independent crates
 # explicitly pass --target to override it.
 
-host_target := `rustc -vV | sed -n 's/^host: //p'`
+host_target := `host=$(rustc -vV 2>/dev/null | grep '^host:' | awk '{print $2}'); if [ -z "$host" ]; then printf 'Error: Failed to determine rustc host target.\n' >&2; exit 1; fi; echo "$host"`
 esp_target  := "riscv32imac-esp-espidf"
 
 # list available recipes (default)
