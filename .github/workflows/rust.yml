@@ -1,4 +1,4 @@
-name: Rust Continuous Integration
+name: CI
 
 on:
   push:
@@ -12,28 +12,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: rust-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # ===========================================================================
-  # Tier 1: Fast checks (formatting, linting)
-  # ===========================================================================
-  format:
-    name: Check Formatting
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check --color always
-
   # ===========================================================================
   # Tier 1: Host unit tests (clock-core)
   # ===========================================================================
@@ -63,8 +49,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install ldproxy and espflash (stable toolchain)
-        run: cargo +stable install ldproxy espflash
+      - name: Install ldproxy and espflash
+        run: |
+          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+          cargo binstall -y ldproxy espflash
 
       - name: Install pinned nightly toolchain
         run: |
@@ -106,7 +94,6 @@ jobs:
             target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock \
             target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock.bin
 
-      # Upload firmware for Wokwi job
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
