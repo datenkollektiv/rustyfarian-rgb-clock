@@ -98,6 +98,23 @@ watch:
 setup-cargo-config:
     cp .cargo/config.toml.dist .cargo/config.toml
 
+# --- Local CI (act) ----------------------------------------------------------
+
+# run CI workflow locally via act (requires Docker + act)
+act-ci:
+    act -j host-tests
+
+# run format-check workflow locally via act (requires Docker + act)
+act-fmt:
+    act -j fmt
+
+# run audit workflow locally via act (requires Docker + act)
+act-audit:
+    act -j audit
+
+# run all CI workflows locally via act (requires Docker + act)
+act-all: act-fmt act-ci act-audit
+
 # --- Composite ---------------------------------------------------------------
 
 # full pre-commit verification: format, check, lint, test (modifies files — local use only)
