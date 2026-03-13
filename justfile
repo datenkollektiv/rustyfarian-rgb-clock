@@ -4,14 +4,14 @@
 # .cargo/config.toml, so recipes that touch platform-independent crates
 # explicitly pass --target to override it.
 
-host_target := `host=$(rustc -vV 2>/dev/null | grep '^host:' | awk '{print $2}'); if [ -z "$host" ]; then printf 'Error: Failed to determine rustc host target.\n' >&2; exit 1; fi; echo "$host"`
+host_target := `scripts/host-target.sh`
 esp_target  := "riscv32imac-esp-espidf"
 
 # list available recipes (default)
 _default:
     @just --list
 
-# --- Build --------------------------------------------------------------------
+# --- Build & Check -----------------------------------------------------------
 
 # build firmware (release)
 build:
@@ -21,7 +21,7 @@ build:
 check:
     cargo check
 
-# --- Flash & Monitor ----------------------------------------------------------
+# --- Flash & Monitor ---------------------------------------------------------
 
 # build, flash, and open serial monitor
 flash: build
@@ -32,10 +32,19 @@ monitor:
     espflash monitor
 
 # erase ESP32 flash (needed after sdkconfig changes)
+[confirm]
 erase-flash:
     espflash erase-flash
 
-# --- Code Quality -------------------------------------------------------------
+# --- Code Quality ------------------------------------------------------------
+
+# format all code
+fmt:
+    cargo fmt
+
+# check formatting without modifying files
+fmt-check:
+    cargo fmt -- --check
 
 # run clippy on the entire workspace
 clippy:
@@ -49,15 +58,7 @@ test:
 test-verbose:
     cargo test -p clock-core --target {{ host_target }} -- --nocapture
 
-# format all code
-fmt:
-    cargo fmt
-
-# check formatting without modifying files
-fmt-check:
-    cargo fmt -- --check
-
-# --- Documentation ------------------------------------------------------------
+# --- Documentation -----------------------------------------------------------
 
 # build rustdoc for clock-core
 doc:
@@ -67,7 +68,19 @@ doc:
 doc-open:
     cargo doc -p clock-core --target {{ host_target }} --no-deps --open
 
-# --- Maintenance --------------------------------------------------------------
+# --- Maintenance -------------------------------------------------------------
+
+# install required development tooling (cargo-deny, cargo-audit, cargo-watch)
+setup:
+    cargo install cargo-deny cargo-audit cargo-watch
+
+# check dependency licenses, advisories, and bans
+deny:
+    cargo deny check
+
+# check dependencies for known security vulnerabilities (requires cargo-audit)
+audit:
+    cargo audit
 
 # update dependencies
 update:
@@ -77,14 +90,25 @@ update:
 clean:
     cargo clean
 
+# watch and re-run tests on file changes (requires cargo-watch)
+watch:
+    cargo watch -x "test -p clock-core --target {{ host_target }}"
+
 # set up local cargo config from the template
 setup-cargo-config:
     cp .cargo/config.toml.dist .cargo/config.toml
 
-# --- Composite ----------------------------------------------------------------
+# --- Composite ---------------------------------------------------------------
 
-# full pre-commit verification: format, check, lint, test
-verify: fmt check clippy test
+# full pre-commit verification: format, check, lint, test (modifies files — local use only)
+pre-commit: fmt check clippy test
 
-# CI-equivalent verification (non-modifying): format check, check, lint, test
-ci: fmt-check check clippy test
+# verify code quality without modifying files; suggests 'just pre-commit' on formatting issues
+verify:
+    @cargo fmt -- --check || (printf '\nFormatting issues found — run `just pre-commit` to auto-fix.\n' >&2 && exit 1)
+    cargo check
+    cargo clippy -- -D warnings
+    cargo test -p clock-core --target {{ host_target }}
+
+# CI-equivalent verification (non-modifying): format check, deny, check, lint, test
+ci: fmt-check deny check clippy test

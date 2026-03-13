@@ -5,7 +5,7 @@ use anyhow::Context;
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
-use rustyfarian_esp_idf_mqtt::{MqttConfig, MqttManager};
+use rustyfarian_esp_idf_mqtt::{MqttBuilder, MqttConfig};
 use rustyfarian_esp_idf_wifi::{WiFiConfig, WiFiManager};
 use rustyfarian_esp_idf_ws2812::WS2812RMT;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -24,7 +24,7 @@ fn main() -> anyhow::Result<()> {
     let nvs = EspDefaultNvsPartition::take()?;
 
     // ESP32-C6 GPIO10 for the NeoPixel clock - start animation before WiFi
-    let clock_driver = WS2812RMT::new(peripherals.pins.gpio10, peripherals.rmt.channel1)?;
+    let clock_driver = WS2812RMT::new(peripherals.pins.gpio10)?;
     let rgb_clock = RGBClock::new(clock_driver)?;
 
     // Wrap clock in Arc<Mutex<>> for sharing between threads
@@ -40,7 +40,7 @@ fn main() -> anyhow::Result<()> {
     const WIFI_PASS: &str = env!("WIFI_PASS");
 
     // ESP32-C6 DevKit onboard RGB LED is on GPIO8
-    let mut driver = WS2812RMT::new(peripherals.pins.gpio8, peripherals.rmt.channel0)?;
+    let mut driver = WS2812RMT::new(peripherals.pins.gpio8)?;
 
     // Initialize Wi-Fi with an LED indicator
     let wifi_config = WiFiConfig::new(WIFI_SSID, WIFI_PASS);
@@ -71,27 +71,32 @@ fn main() -> anyhow::Result<()> {
         .parse()
         .context("MQTT_PORT must be a valid port number (0-65535)")?;
     let mqtt_config = MqttConfig::new(MQTT_HOST, mqtt_port, MQTT_CLIENT_ID);
-    let mut _mqtt = MqttManager::new(mqtt_config, &["tick"], move |_topic: &str, data: &[u8]| {
-        use rgb_clock::LocalTime;
+    let _mqtt = MqttBuilder::new(mqtt_config)
+        .on_connect(|client, _is_clean| {
+            use esp_idf_svc::mqtt::client::QoS;
+            client.subscribe("tick", QoS::AtLeastOnce)?;
+            Ok(())
+        })
+        .on_message(move |_topic: &str, data: &[u8]| {
+            use rgb_clock::LocalTime;
 
-        // Cancel any running startup animation on the first time update
-        animation_cancel_clone.store(true, Ordering::Relaxed);
+            // Cancel any running startup animation on the first time update
+            animation_cancel_clone.store(true, Ordering::Relaxed);
 
-        match LocalTime::try_from(data) {
-            Ok(time) => {
-                if let Ok(mut c) = clock_clone.lock() {
-                    if let Err(e) = c.set_local_time(time) {
-                        log::error!("Failed to set time: {:?}", e);
+            match LocalTime::try_from(data) {
+                Ok(time) => {
+                    if let Ok(mut c) = clock_clone.lock() {
+                        if let Err(e) = c.set_local_time(time) {
+                            log::error!("Failed to set time: {:?}", e);
+                        }
                     }
                 }
+                Err(e) => {
+                    log::error!("Failed to parse time: {} (raw: {:02x?})", e, data);
+                }
             }
-            Err(e) => {
-                log::error!("Failed to parse time: {} (raw: {:02x?})", e, data);
-            }
-        }
-    })?;
-    #[allow(deprecated)]
-    _mqtt.send_startup_message()?;
+        })
+        .build()?;
 
     log::info!("Setup complete, parking main thread");
     // Park the main thread indefinitely - MQTT callbacks handle all work
