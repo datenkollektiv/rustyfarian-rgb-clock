@@ -6,8 +6,8 @@ pre-release-checklist.md
 /.claude
 CLAUDE.md
 /.idea
-inbox/
-outbox/
+review-queue/
+archive
 
 /.embuild
 /target

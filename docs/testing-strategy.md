@@ -5,24 +5,24 @@ This document outlines the implementation plan for a three-tier testing pyramid 
 ## Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         Testing Pyramid                              │
-├─────────────────────────────────────────────────────────────────────┤
-│  Tier 3: Hardware-in-the-Loop (HIL)     [minutes]                   │
-│  - Self-hosted runner on Raspberry Pi                               │
-│  - Real ESP32-C6 with physical NeoPixel ring                        │
-│  - RMT timing verification, integration tests                       │
-├─────────────────────────────────────────────────────────────────────┤
-│  Tier 2: Wokwi Simulation (WITL)        [seconds]                   │
-│  - Simulated ESP32-C6 + NeoPixel ring                               │
-│  - Boot verification, WiFi/MQTT connection                          │
-│  - Visual screenshot capture                                         │
-├─────────────────────────────────────────────────────────────────────┤
-│  Tier 1: Host Unit Tests                [milliseconds]              │
-│  - clock-core (time→LED mapping)                                    │
-│  - ferriswheel effects (rainbow animation)                          │
-│  - Pure Rust, no hardware dependencies                              │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                       Testing Pyramid                           │
+├─────────────────────────────────────────────────────────────────┤
+│  Tier 3: Hardware-in-the-Loop (HIL)     [minutes]               │
+│  - Self-hosted runner on Raspberry Pi                           │
+│  - Real ESP32-C6 with physical NeoPixel ring                    │
+│  - RMT timing verification, integration tests                   │
+├─────────────────────────────────────────────────────────────────┤
+│  Tier 2: Wokwi Simulation (WITL)        [seconds]               │
+│  - Simulated ESP32-C6 + NeoPixel ring                           │
+│  - Boot verification, WiFi/MQTT connection                      │
+│  - Visual screenshot capture                                     │
+├─────────────────────────────────────────────────────────────────┤
+│  Tier 1: Host Unit Tests                [milliseconds]           │
+│  - clock-core (time→LED mapping)                                │
+│  - ferriswheel effects (rainbow animation)                      │
+│  - Pure Rust, no hardware dependencies                          │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Implementation Phases
@@ -198,7 +198,7 @@ jobs:
 4. Configure udev rules for stable device naming
 5. Install GitHub Actions self-hosted runner
 
-See `inbox/hil-testbed/README.md` for detailed setup instructions.
+See `review-queue/hil-testbed/README.md` for detailed setup instructions.
 
 #### 3.3 udev Rules
 
@@ -293,15 +293,15 @@ jobs:
 
 ### Phase 2: Wokwi
 
-- [ ] Create `wokwi.toml` configuration
-- [ ] Create `diagram.json` circuit definition
-- [ ] Create `wokwi/test-startup.yaml` scenario
-- [ ] Create `wokwi/test-rainbow-animation.yaml` scenario
-- [ ] Add WOKWI_CLI_TOKEN secret to the repository
-- [ ] Create `.github/workflows/wokwi.yml`
-- [ ] Add strategic log messages for test triggers
+- [x] Create `wokwi.toml` configuration
+- [x] Create `diagram.json` circuit definition
+- [x] Create `wokwi/test-startup.yaml` scenario
+- [x] Create `wokwi/test-rainbow-animation.yaml` scenario
+- [x] Add WOKWI_CLI_TOKEN secret to the repository
+- [x] Create `.github/workflows/wokwi.yml` (integrated into `rust_ci.yml`)
+- [x] Add strategic log messages for test triggers
 - [ ] Test locally with Wokwi VS Code extension
-- [ ] Verify CI pipeline runs successfully
+- [x] Verify CI pipeline runs successfully
 
 ### Phase 3: HIL
 
