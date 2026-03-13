@@ -5,6 +5,21 @@ An ESP32-C6 RGB LED clock that displays time using 12 WS2812 NeoPixel LEDs arran
 > Note: Parts of this library were developed with the assistance of AI tools.
 > All generated code has been reviewed and curated by the maintainer.
 
+## Vision
+
+> Validate a replicable three-tier embedded testing pyramid (host tests, Wokwi simulation, hardware-in-the-loop) using a working RGB clock as the test fixture, so that future rustyfarian projects can adopt the approach with confidence.
+
+**We are building this for:** ourselves — learning and preparation for future embedded Rust projects and for future rustyfarian projects that will inherit this testing approach.
+
+**Long-term goals:**
+- All three testing tiers running green in CI
+- Documentation is good enough to replicate the testing pyramid in new projects
+- Mature the shared rustyfarian crates through real usage and test coverage
+
+**Out of scope:** new clock features (those belong in other projects), hardware compatibility beyond ESP32-C6, and building a general-purpose testing framework.
+
+*Full vision, success signals, and open questions: [VISION.md](./VISION.md)*
+
 ## Quick Start
 
 Build
