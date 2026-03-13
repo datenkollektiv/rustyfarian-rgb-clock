@@ -63,14 +63,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install ldproxy and espflash (stable toolchain)
+        run: cargo +stable install ldproxy espflash
+
       - name: Install pinned nightly toolchain
         run: |
           rustup toolchain install nightly-2025-12-01
           rustup component add rust-src clippy --toolchain nightly-2025-12-01
           rustup default nightly-2025-12-01
-
-      - name: Install ldproxy and espflash
-        run: cargo install ldproxy espflash
 
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
