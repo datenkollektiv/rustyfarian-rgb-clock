@@ -50,23 +50,23 @@ fmt-check:
 clippy:
     cargo clippy -- -D warnings
 
-# run clock-core unit tests on host
+# run clock-pure unit tests on host
 test:
-    cargo test -p clock-core --target {{ host_target }}
+    cargo test -p clock-pure --target {{ host_target }}
 
 # run tests with stdout/stderr visible
 test-verbose:
-    cargo test -p clock-core --target {{ host_target }} -- --nocapture
+    cargo test -p clock-pure --target {{ host_target }} -- --nocapture
 
 # --- Documentation -----------------------------------------------------------
 
-# build rustdoc for clock-core
+# build rustdoc for clock-pure
 doc:
-    cargo doc -p clock-core --target {{ host_target }} --no-deps
+    cargo doc -p clock-pure --target {{ host_target }} --no-deps
 
 # build and open docs in browser
 doc-open:
-    cargo doc -p clock-core --target {{ host_target }} --no-deps --open
+    cargo doc -p clock-pure --target {{ host_target }} --no-deps --open
 
 # --- Maintenance -------------------------------------------------------------
 
@@ -92,7 +92,7 @@ clean:
 
 # watch and re-run tests on file changes (requires cargo-watch)
 watch:
-    cargo watch -x "test -p clock-core --target {{ host_target }}"
+    cargo watch -x "test -p clock-pure --target {{ host_target }}"
 
 # set up local cargo config from the template
 setup-cargo-config:
@@ -125,7 +125,7 @@ verify:
     @cargo fmt -- --check || (printf '\nFormatting issues found — run `just pre-commit` to auto-fix.\n' >&2 && exit 1)
     cargo check
     cargo clippy -- -D warnings
-    cargo test -p clock-core --target {{ host_target }}
+    cargo test -p clock-pure --target {{ host_target }}
 
 # CI-equivalent verification (non-modifying): format check, deny, check, lint, test
 ci: fmt-check deny check clippy test

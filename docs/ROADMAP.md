@@ -1,23 +1,38 @@
-# Rustyfarian RGB Clock Roadmap
+# Roadmap
 
-## Planned
+*Last updated: March 2026*
 
-### Three-Tier Testing Strategy
+This project validates a three-tier embedded testing pyramid for the rustyfarian ecosystem.
+The RGB clock is a stable test fixture — feature work lives in other projects.
+Following a vision review (March 2026), the focus is on completing all three testing tiers
+with documentation good enough for other projects to adopt the approach.
 
-Continue expanding the testing pyramid.
-See [testing-strategy.md](testing-strategy.md) for the full implementation plan.
+```mermaid
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "cScale0": "#c8f7c5",
+    "cScaleLabel0": "#1b5e20",
+    "cScale1": "#fff3cd",
+    "cScaleLabel1": "#7a5a00",
+    "cScale2": "#e3f2fd",
+    "cScaleLabel2": "#0d47a1"
+  }
+}}%%
 
-**Remaining phases:**
-- **Tier 1: Host Tests** — Expand clock-core unit tests (low effort)
-- **Tier 3: Hardware-in-the-Loop** — Self-hosted runner with real hardware (high effort)
+timeline
+    title Rustyfarian RGB Clock Roadmap
 
-## Ideas
+    Near term : Tier 1 — Expand clock-pure host tests (in progress)
+              : CI pipeline split and cargo-deny (done)
+              : Dependency alignment — esp-idf-hal 0.46, MqttBuilder (done)
+              : Tier 2 — Wokwi simulation (done)
 
-- Support MQTT messages with 12 RGB (plus hue) values to show raw data on the clock.
+    Mid term  : Tier 3 — Hardware-in-the-Loop on Raspberry Pi (after Tier 1)
+              : Testing playbook documentation
 
-<details>
-<summary><strong>Completed</strong></summary>
+    Long term : Cross-project adoption validation
+              : Raw RGB data via MQTT (testing vehicle)
+```
 
-- **Tier 2: Wokwi Simulation** — Automated firmware testing in simulated ESP32 (v0.1.0)
-
-</details>
+See [testing-strategy.md](testing-strategy.md) for the full three-tier implementation plan.

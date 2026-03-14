@@ -21,7 +21,7 @@ pub type Rgb = (u8, u8, u8);
 /// # Example
 ///
 /// ```
-/// use clock_core::hour_to_index;
+/// use clock_pure::hour_to_index;
 ///
 /// assert_eq!(hour_to_index(12), 11); // 12 o'clock -> LED 11
 /// assert_eq!(hour_to_index(1), 0);   // 1 o'clock -> LED 0
@@ -45,7 +45,7 @@ pub fn hour_to_index(hour: u8) -> usize {
 /// # Example
 ///
 /// ```
-/// use clock_core::minute_to_index;
+/// use clock_pure::minute_to_index;
 ///
 /// assert_eq!(minute_to_index(0), 11);  // :00 -> 12 o'clock
 /// assert_eq!(minute_to_index(5), 0);   // :05 -> 1 o'clock
@@ -68,7 +68,7 @@ pub fn minute_to_index(minute: u8) -> usize {
 /// # Example
 ///
 /// ```
-/// use clock_core::second_to_index;
+/// use clock_pure::second_to_index;
 ///
 /// assert_eq!(second_to_index(0), 11);  // :00 -> 12 o'clock
 /// assert_eq!(second_to_index(59), 10); // :59 -> 11 o'clock
@@ -82,7 +82,7 @@ pub fn second_to_index(second: u8) -> usize {
 /// # Example
 ///
 /// ```
-/// use clock_core::scale_color;
+/// use clock_pure::scale_color;
 ///
 /// let color = (10, 20, 30);
 /// let scaled = scale_color(color, 2);
@@ -105,7 +105,7 @@ pub fn scale_color(color: Rgb, factor: u8) -> Rgb {
 /// # Example
 ///
 /// ```
-/// use clock_core::add_colors;
+/// use clock_pure::add_colors;
 ///
 /// let a = (100, 50, 25);
 /// let b = (50, 100, 75);

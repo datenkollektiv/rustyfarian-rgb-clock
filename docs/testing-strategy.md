@@ -19,7 +19,7 @@ This document outlines the implementation plan for a three-tier testing pyramid 
 │  - Visual screenshot capture                                     │
 ├─────────────────────────────────────────────────────────────────┤
 │  Tier 1: Host Unit Tests                [milliseconds]           │
-│  - clock-core (time→LED mapping)                                │
+│  - clock-pure (time→LED mapping)                                │
 │  - ferriswheel effects (rainbow animation)                      │
 │  - Pure Rust, no hardware dependencies                          │
 └─────────────────────────────────────────────────────────────────┘
@@ -29,15 +29,15 @@ This document outlines the implementation plan for a three-tier testing pyramid 
 
 ### Phase 1: Tier 1 Enhancement (Host Tests)
 
-**Status:** Partially complete (clock-core exists)
+**Status:** Partially complete (clock-pure exists)
 
 **Tasks:**
-1. Ensure `clock-core` has comprehensive unit tests for time-to-LED mapping
+1. Ensure `clock-pure` has comprehensive unit tests for time-to-LED mapping
 2. Add property-based tests for edge cases (hour 0/23, minute 59, etc.)
 3. Add tests for color blending when hands overlap
 
 **Files to create/modify:**
-- `crates/clock-core/src/lib.rs` - Add more unit tests
+- `crates/clock-pure/src/lib.rs` - Add more unit tests
 
 ### Phase 2: Wokwi Simulation (Tier 2)
 
@@ -287,9 +287,9 @@ jobs:
 
 ### Phase 1: Host Tests
 
-- [ ] Review and expand clock-core unit tests
+- [ ] Review and expand clock-pure unit tests
 - [ ] Add edge case tests for time conversion
-- [ ] Ensure all tests pass: `cargo test -p clock-core`
+- [ ] Ensure all tests pass: `cargo test -p clock-pure`
 
 ### Phase 2: Wokwi
 

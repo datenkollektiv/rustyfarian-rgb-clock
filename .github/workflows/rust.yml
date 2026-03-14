@@ -21,7 +21,7 @@ env:
 
 jobs:
   # ===========================================================================
-  # Tier 1: Host unit tests (clock-core)
+  # Tier 1: Host unit tests (clock-pure)
   # ===========================================================================
   host-tests:
     name: Host Unit Tests
@@ -36,8 +36,8 @@ jobs:
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
 
-      - name: Run clock-core tests
-        run: cargo test -p clock-core --lib
+      - name: Run clock-pure tests
+        run: cargo test -p clock-pure --lib
 
   # ===========================================================================
   # Tier 1: Build and Clippy for ESP32-C6
