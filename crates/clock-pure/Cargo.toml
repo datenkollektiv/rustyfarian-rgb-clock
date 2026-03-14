@@ -7,3 +7,6 @@ license = "MIT"
 description = "Pure Rust clock index mapping and color utilities - no hardware dependencies"
 
 [dependencies]
+
+[dev-dependencies]
+proptest = "1.0"

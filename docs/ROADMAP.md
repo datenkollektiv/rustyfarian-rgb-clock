@@ -23,7 +23,7 @@ with documentation good enough for other projects to adopt the approach.
 timeline
     title Rustyfarian RGB Clock Roadmap
 
-    Near term : Tier 1 — Expand clock-pure host tests (in progress)
+    Near term : Tier 1 — Expand clock-pure host tests (done)
               : CI pipeline split and cargo-deny (done)
               : Dependency alignment — esp-idf-hal 0.46, MqttBuilder (done)
               : Tier 2 — Wokwi simulation (done)

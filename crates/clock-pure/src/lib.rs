@@ -289,4 +289,275 @@ mod tests {
         // Only some channels saturate
         assert_eq!(add_colors((200, 50, 100), (100, 50, 100)), (255, 100, 200));
     }
+
+    #[test]
+    fn test_add_colors_commutative() {
+        let a = (100, 50, 200);
+        let b = (30, 180, 60);
+        assert_eq!(add_colors(a, b), add_colors(b, a));
+    }
+
+    // ===== hour_to_index edge cases =====
+
+    #[test]
+    fn test_hour_to_index_last_hours() {
+        assert_eq!(hour_to_index(11), 10); // 11 o'clock -> LED 10
+        assert_eq!(hour_to_index(23), 10); // 23:xx -> LED 10
+    }
+
+    #[test]
+    fn test_hour_to_index_am_pm_symmetry() {
+        for h in 0..12 {
+            assert_eq!(
+                hour_to_index(h),
+                hour_to_index(h + 12),
+                "hour {} and {} should map to the same LED",
+                h,
+                h + 12
+            );
+        }
+    }
+
+    // ===== minute_to_index segment transitions =====
+
+    #[test]
+    fn test_minute_to_index_all_segment_boundaries() {
+        // Verify the last minute of each segment and first minute of the next
+        let transitions = [
+            (4, 11, 5, 0),   // 12→1
+            (9, 0, 10, 1),   // 1→2
+            (14, 1, 15, 2),  // 2→3
+            (19, 2, 20, 3),  // 3→4
+            (24, 3, 25, 4),  // 4→5
+            (29, 4, 30, 5),  // 5→6
+            (34, 5, 35, 6),  // 6→7
+            (39, 6, 40, 7),  // 7→8
+            (44, 7, 45, 8),  // 8→9
+            (49, 8, 50, 9),  // 9→10
+            (54, 9, 55, 10), // 10→11
+        ];
+        for (last_min, last_idx, first_min, first_idx) in transitions {
+            assert_eq!(
+                minute_to_index(last_min),
+                last_idx,
+                "minute {} should be last in segment",
+                last_min
+            );
+            assert_eq!(
+                minute_to_index(first_min),
+                first_idx,
+                "minute {} should be first in next segment",
+                first_min
+            );
+        }
+    }
+
+    #[test]
+    fn test_minute_to_index_last_segment_wraps() {
+        // Minutes 55-59 form the 11 o'clock segment (LED 10)
+        // Minute 0 wraps back to 12 o'clock (LED 11)
+        assert_eq!(minute_to_index(59), 10);
+        assert_eq!(minute_to_index(0), 11);
+    }
+
+    // ===== scale_color edge cases =====
+
+    #[test]
+    fn test_scale_color_max_values() {
+        assert_eq!(scale_color((255, 255, 255), 255), (255, 255, 255));
+    }
+
+    #[test]
+    fn test_scale_color_asymmetric_channels() {
+        assert_eq!(scale_color((1, 128, 255), 2), (2, 255, 255));
+    }
+
+    #[test]
+    fn test_scale_color_black_input() {
+        assert_eq!(scale_color((0, 0, 0), 255), (0, 0, 0));
+    }
+
+    // ===== Clock hand overlap scenarios =====
+    //
+    // These simulate the color blending logic from RGBClock::set_local_time
+    // using the actual hand colors: hour=blue(0,0,1), minute=green(0,1,0), second=red(1,0,0).
+
+    const HOUR_COLOR: Rgb = (0, 0, 1);
+    const MINUTE_COLOR: Rgb = (0, 1, 0);
+    const SECOND_COLOR: Rgb = (1, 0, 0);
+
+    #[test]
+    fn test_overlap_hour_and_minute_same_led() {
+        // 12:00:15 — hour and minute both at 12 o'clock (LED 11)
+        let hour_idx = hour_to_index(12);
+        let minute_idx = minute_to_index(0);
+        assert_eq!(hour_idx, minute_idx);
+
+        let blended = add_colors(HOUR_COLOR, MINUTE_COLOR);
+        assert_eq!(blended, (0, 1, 1)); // cyan
+    }
+
+    #[test]
+    fn test_overlap_all_three_hands_same_led() {
+        // 12:00:00 — all three hands at 12 o'clock (LED 11)
+        let hour_idx = hour_to_index(0);
+        let minute_idx = minute_to_index(0);
+        let second_idx = second_to_index(0);
+        assert_eq!(hour_idx, 11);
+        assert_eq!(minute_idx, 11);
+        assert_eq!(second_idx, 11);
+
+        let blended = add_colors(add_colors(HOUR_COLOR, MINUTE_COLOR), SECOND_COLOR);
+        assert_eq!(blended, (1, 1, 1)); // white
+    }
+
+    #[test]
+    fn test_overlap_minute_and_second_same_led() {
+        // 3:30:30 — minute and second both at 6 o'clock (LED 5), hour at 3 (LED 2)
+        let hour_idx = hour_to_index(3);
+        let minute_idx = minute_to_index(30);
+        let second_idx = second_to_index(30);
+        assert_eq!(hour_idx, 2);
+        assert_eq!(minute_idx, 5);
+        assert_eq!(second_idx, 5);
+        assert_ne!(hour_idx, minute_idx);
+
+        let blended = add_colors(MINUTE_COLOR, SECOND_COLOR);
+        assert_eq!(blended, (1, 1, 0)); // yellow
+    }
+
+    #[test]
+    fn test_no_overlap_all_hands_different() {
+        // 3:30:05 — hour at 3 (LED 2), minute at 6 (LED 5), second at 1 (LED 0)
+        let hour_idx = hour_to_index(3);
+        let minute_idx = minute_to_index(30);
+        let second_idx = second_to_index(5);
+        assert_eq!(hour_idx, 2);
+        assert_eq!(minute_idx, 5);
+        assert_eq!(second_idx, 0);
+    }
+
+    #[test]
+    fn test_overlap_with_brightness_scaling() {
+        // Simulate full pipeline: blend then scale (brightness=10)
+        let blended = add_colors(HOUR_COLOR, MINUTE_COLOR);
+        let scaled = scale_color(blended, 10);
+        assert_eq!(scaled, (0, 10, 10));
+    }
+
+    #[test]
+    fn test_overlap_scaled_bright_colors_saturate() {
+        // Bright base colors that saturate when blended and scaled
+        let hour = (0, 0, 30);
+        let minute = (0, 30, 0);
+        let blended = add_colors(hour, minute);
+        let scaled = scale_color(blended, 10);
+        assert_eq!(scaled, (0, 255, 255));
+    }
+
+    // ===== Out-of-range input behavior =====
+    //
+    // Input types are u8, so values are bounded 0–255. Hours > 23 and
+    // minutes/seconds > 59 are not expected from valid MQTT messages but
+    // the functions handle them gracefully via modulo — they never panic.
+
+    #[test]
+    fn test_hour_to_index_out_of_range_wraps() {
+        // hour 24 wraps like hour 0 (midnight)
+        assert_eq!(hour_to_index(24), hour_to_index(0));
+        // hour 25 wraps like hour 1
+        assert_eq!(hour_to_index(25), hour_to_index(1));
+    }
+
+    #[test]
+    fn test_minute_to_index_out_of_range_wraps() {
+        // minute 60 wraps like minute 0
+        assert_eq!(minute_to_index(60), minute_to_index(0));
+        // minute 65 wraps like minute 5
+        assert_eq!(minute_to_index(65), minute_to_index(5));
+    }
+
+    #[test]
+    fn test_all_index_functions_never_exceed_11() {
+        // Exhaustive: no u8 input can produce an index >= 12
+        for v in 0..=255u8 {
+            assert!(hour_to_index(v) < 12, "hour_to_index({}) >= 12", v);
+            assert!(minute_to_index(v) < 12, "minute_to_index({}) >= 12", v);
+            assert!(second_to_index(v) < 12, "second_to_index({}) >= 12", v);
+        }
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn add_colors_is_commutative(
+            r1 in 0..=255u8, g1 in 0..=255u8, b1 in 0..=255u8,
+            r2 in 0..=255u8, g2 in 0..=255u8, b2 in 0..=255u8,
+        ) {
+            let a = (r1, g1, b1);
+            let b = (r2, g2, b2);
+            prop_assert_eq!(add_colors(a, b), add_colors(b, a));
+        }
+
+        #[test]
+        fn scale_color_zero_always_black(r in 0..=255u8, g in 0..=255u8, b in 0..=255u8) {
+            prop_assert_eq!(scale_color((r, g, b), 0), (0, 0, 0));
+        }
+
+        #[test]
+        fn scale_color_one_is_identity(r in 0..=255u8, g in 0..=255u8, b in 0..=255u8) {
+            prop_assert_eq!(scale_color((r, g, b), 1), (r, g, b));
+        }
+
+        #[test]
+        fn scale_color_never_decreases(
+            r in 0..=255u8, g in 0..=255u8, b in 0..=255u8,
+            factor in 1..=255u8,
+        ) {
+            let scaled = scale_color((r, g, b), factor);
+            prop_assert!(scaled.0 >= r);
+            prop_assert!(scaled.1 >= g);
+            prop_assert!(scaled.2 >= b);
+        }
+
+        #[test]
+        fn add_colors_black_is_identity(r in 0..=255u8, g in 0..=255u8, b in 0..=255u8) {
+            let color = (r, g, b);
+            prop_assert_eq!(add_colors(color, (0, 0, 0)), color);
+            prop_assert_eq!(add_colors((0, 0, 0), color), color);
+        }
+
+        #[test]
+        fn add_colors_never_decreases(
+            r1 in 0..=255u8, g1 in 0..=255u8, b1 in 0..=255u8,
+            r2 in 0..=255u8, g2 in 0..=255u8, b2 in 0..=255u8,
+        ) {
+            let a = (r1, g1, b1);
+            let b = (r2, g2, b2);
+            let result = add_colors(a, b);
+            prop_assert!(result.0 >= r1);
+            prop_assert!(result.1 >= g1);
+            prop_assert!(result.2 >= b1);
+        }
+
+        #[test]
+        fn hour_to_index_always_valid(hour in 0..=255u8) {
+            prop_assert!(hour_to_index(hour) < 12);
+        }
+
+        #[test]
+        fn minute_to_index_always_valid(minute in 0..=255u8) {
+            prop_assert!(minute_to_index(minute) < 12);
+        }
+
+        #[test]
+        fn hour_to_index_am_pm_equivalent(hour in 0..=11u8) {
+            prop_assert_eq!(hour_to_index(hour), hour_to_index(hour + 12));
+        }
+    }
 }

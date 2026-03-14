@@ -36,6 +36,9 @@ jobs:
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
 
+      - name: Clippy (clock-pure)
+        run: cargo clippy -p clock-pure --all-targets -- -D warnings
+
       - name: Run clock-pure tests
         run: cargo test -p clock-pure --lib
 
@@ -83,7 +86,7 @@ jobs:
         run: cargo build --release
 
       - name: Clippy
-        run: cargo clippy --all-targets --workspace -- -D warnings
+        run: cargo clippy --all-targets --workspace --exclude clock-pure -- -D warnings
 
       - name: Generate firmware image for Wokwi
         run: |

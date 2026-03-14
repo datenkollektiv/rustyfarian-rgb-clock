@@ -287,9 +287,9 @@ jobs:
 
 ### Phase 1: Host Tests
 
-- [ ] Review and expand clock-pure unit tests
-- [ ] Add edge case tests for time conversion
-- [ ] Ensure all tests pass: `cargo test -p clock-pure`
+- [x] Review and expand clock-pure unit tests
+- [x] Add edge case tests for time conversion
+- [x] Ensure all tests pass: `cargo test -p clock-pure`
 
 ### Phase 2: Wokwi
 
@@ -298,7 +298,7 @@ jobs:
 - [x] Create `wokwi/test-startup.yaml` scenario
 - [x] Create `wokwi/test-rainbow-animation.yaml` scenario
 - [x] Add WOKWI_CLI_TOKEN secret to the repository
-- [x] Create `.github/workflows/wokwi.yml` (integrated into `rust_ci.yml`)
+- [x] Create `.github/workflows/wokwi.yml` (integrated into `rust.yml`)
 - [x] Add strategic log messages for test triggers
 - [ ] Test locally with Wokwi VS Code extension
 - [x] Verify CI pipeline runs successfully
