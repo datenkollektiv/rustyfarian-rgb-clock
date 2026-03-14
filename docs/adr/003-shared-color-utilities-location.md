@@ -6,7 +6,7 @@ Proposed
 
 ## Context
 
-Color manipulation functions like `scale_color()` and `add_colors()` are currently implemented in the `clock-core` crate of `rustyfarian-rgb-clock`.
+Color manipulation functions like `scale_color()` and `add_colors()` are currently implemented in the `clock-pure` crate of `rustyfarian-rgb-clock`.
 These functions are generic utilities not specific to clock functionality:
 
 ```rust
@@ -26,7 +26,7 @@ Candidate locations:
 
 Move shared color utilities to the `led-effects` crate in `rustyfarian-ws2812`.
 
-The `clock-core` crate will either:
+The `clock-pure` crate will either:
 - Depend on `led-effects` and re-export the functions, or
 - Remove the functions and update callers to use `led-effects` directly
 
@@ -43,7 +43,7 @@ New color utilities (like `hsv_to_rgb`) will also live in `led-effects`.
 
 ### Negative
 
-- `clock-core` loses some self-containment (may need dependency on `led-effects`)
+- `clock-pure` loses some self-containment (may need dependency on `led-effects`)
 - Slightly larger dependency graph for projects that only need basic color math
 - Migration effort required for existing code
 
@@ -51,4 +51,4 @@ New color utilities (like `hsv_to_rgb`) will also live in `led-effects`.
 
 - `ws2812-pure` remains focused on protocol-level concerns (RGB to GRB, bit encoding)
 - Clear separation: `ws2812-pure` = protocol, `led-effects` = visual effects and color math
-- `clock-core` remains focused on time-to-LED-index mapping (truly clock-specific logic)
+- `clock-pure` remains focused on time-to-LED-index mapping (truly clock-specific logic)

@@ -13,7 +13,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - ESP32-C6 firmware that receives time via MQTT and displays it on 12 WS2812 LEDs arranged as a clock face.
 - Three configurable clock hands — hour (blue), minute (green), second (red) — with additive color mixing when hands overlap.
-- `clock-core` crate: pure Rust, `no_std`-compatible utilities for mapping hour/minute/second values to 12-LED clock positions.
+- `clock-pure` crate: pure Rust, `no_std`-compatible utilities for mapping hour/minute/second values to 12-LED clock positions.
 - Rainbow startup animation that runs until the first MQTT `tick` message is received, then hands off to the clock display.
 - MQTT subscriber for the `tick` topic, expecting `{"hour": H, "minute": M, "second": S}` JSON payloads.
 - Wi-Fi connection with an onboard LED status indicator during the connection phase.

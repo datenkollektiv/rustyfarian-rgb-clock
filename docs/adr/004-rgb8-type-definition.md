@@ -11,7 +11,7 @@ Currently, different crates use different representations:
 
 | Crate         | Current Representation                    |
 |---------------|-------------------------------------------|
-| `clock-core`  | `(u8, u8, u8)` tuple                      |
+| `clock-pure`  | `(u8, u8, u8)` tuple                      |
 | `ws2812-pure` | `(u8, u8, u8)` tuple                      |
 | `led-effects` | `RGB8` from `smart_leds` crate (optional) |
 
@@ -66,7 +66,7 @@ pub use ws2812_pure::RGB8;
 ### Negative
 
 - Breaking change for code using tuples (migration required)
-- `clock-core` must depend on `ws2812-pure` or `led-effects`
+- `clock-pure` must depend on `ws2812-pure` or `led-effects`
 - Slight increase in API surface for `ws2812-pure`
 
 ### Neutral

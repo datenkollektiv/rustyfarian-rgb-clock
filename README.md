@@ -95,7 +95,7 @@ rustyfarian-rgb-clock/           # This repository
 │   ├── main.rs                  # Entry point, Wi-Fi/MQTT setup
 │   └── rgb_clock.rs             # Clock display logic
 └── crates/
-    └── clock-core/              # Pure Rust clock utilities (testable)
+    └── clock-pure/              # Pure Rust clock utilities (testable)
 ```
 
 ### Local Development

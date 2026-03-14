@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clock_core::{add_colors, hour_to_index, minute_to_index, scale_color, second_to_index, Rgb};
+use clock_pure::{add_colors, hour_to_index, minute_to_index, scale_color, second_to_index, Rgb};
 use ferriswheel::{Direction, RainbowEffect};
 use log::debug;
 use rgb::RGB8;
