@@ -68,7 +68,7 @@ Fields:
 - `minute`: 0-59 (mapped to 12 positions)
 - `second`: 0-59 (mapped to 12 positions)
 
-Since the default flash size of 1MB may be not enough, `just flash` uses a custom partition table.
+Since the default flash size of 1MB may not be enough, `just flash` uses a custom partition table.
 The underlying command is:
 
 ```sh
@@ -79,13 +79,12 @@ cargo espflash flash --partition-table partitions.csv --monitor
 
 This project uses external crates from companion repositories:
 
-| Crate                        | Repository                                                                   | Description                             |
-|:-----------------------------|:-----------------------------------------------------------------------------|:----------------------------------------|
-| `led-effects`                | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | LED status indicators and pulse effects |
-| `ferriswheel`                | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | RGB ring effects (rainbow animations)   |
-| `rustyfarian-esp-idf-ws2812` | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | ESP-IDF RMT driver for WS2812           |
-| `rustyfarian-esp-idf-wifi`   | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | WiFi connection management              |
-| `rustyfarian-esp-idf-mqtt`   | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | MQTT client with callbacks              |
+| Crate                        | Repository                                                                   | Description                           |
+|:-----------------------------|:-----------------------------------------------------------------------------|:--------------------------------------|
+| `ferriswheel`                | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | RGB ring effects (rainbow animations) |
+| `rustyfarian-esp-idf-ws2812` | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | ESP-IDF RMT driver for WS2812         |
+| `rustyfarian-esp-idf-wifi`   | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | WiFi connection management            |
+| `rustyfarian-esp-idf-mqtt`   | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | MQTT client with callbacks            |
 
 ## Project Structure
 
@@ -104,8 +103,12 @@ For developing alongside the external crates, `.cargo/config.toml` contains `[pa
 
 ```toml
 [patch."https://github.com/datenkollektiv/rustyfarian-ws2812"]
-led-effects = { path = "../rustyfarian-ws2812/crates/led-effects" }
-# ... etc
+ferriswheel = { path = "../rustyfarian-ws2812/crates/ferriswheel" }
+rustyfarian-esp-idf-ws2812 = { path = "../rustyfarian-ws2812/crates/rustyfarian-esp-idf-ws2812" }
+
+[patch."https://github.com/datenkollektiv/rustyfarian-network"]
+rustyfarian-esp-idf-wifi = { path = "../rustyfarian-network/crates/rustyfarian-esp-idf-wifi" }
+rustyfarian-esp-idf-mqtt = { path = "../rustyfarian-network/crates/rustyfarian-esp-idf-mqtt" }
 ```
 
 Comment out the patches to build against the published GitHub repos.

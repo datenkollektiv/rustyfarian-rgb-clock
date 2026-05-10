@@ -9,6 +9,8 @@ CLAUDE.md
 review-queue/
 archive
 
+/.codex
+
 /.embuild
 /target
 /Cargo.lock
