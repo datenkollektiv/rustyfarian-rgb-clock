@@ -21,7 +21,7 @@ Keep all project-related context here:
 ## Key Context
 
 - ESP32-C6 (RISC-V) target: `riscv32imac-esp-espidf` — standard RISC-V toolchain, no Xtensa fork needed
-- 12 WS2812 NeoPixels on a clock face; LED index 0 = 12 o'clock
+- 12 WS2812 NeoPixels on a clock face; LED 0 = 1 o'clock position, LED 11 = 12 o'clock position
 - Time arrives via MQTT `tick` topic as `{"hour":H,"minute":M,"second":S}` (24-hour)
 - Local development uses path patches in `.cargo/config.toml` to point at sibling repos
   (rustyfarian-ws2812, rustyfarian-network) — comment out patches to build against git refs
