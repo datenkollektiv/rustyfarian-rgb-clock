@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+- Expanded `clock-pure` host test suite — color blending, edge cases, and hand-mapping boundary values.
+- CI pipeline split into separate jobs with `cargo-deny` dependency audit.
+
+### Changed
+- Stabilised Wokwi simulation harness — merged binary with bootloader, UART console, and Tx/Rx wiring.
+- Updated `esp-idf-hal` to `0.46` and migrated MQTT integration to `MqttBuilder` lifecycle-callback API.
+- Renamed pure crate `clock-core` → `clock-pure` for consistency with the workspace `*-pure` convention.
+
 ## [0.1.0] - 2026-02-13
 
 ### Added

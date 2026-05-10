@@ -1,37 +1,45 @@
 # Roadmap
 
-*Last updated: March 2026*
+*Last updated: May 2026*
 
-This project validates a three-tier embedded testing pyramid for the rustyfarian ecosystem.
-The RGB clock is a stable test fixture — feature work lives in other projects.
-Following a vision review (March 2026), the focus is on completing all three testing tiers
-with documentation good enough for other projects to adopt the approach.
+A May 2026 deep-dive review confirmed the near-term tier is complete and repositioned the project: the rgb-clock is the **integration test fixture** for the rustyfarian workspace — its testing pyramid validates that ws2812, network, and the embedded toolchain work together at every release.
+The immediate focus is cutting v0.2.0, which consolidates ~12 weeks of upstream-tracking work and establishes a stable, pinned integration baseline.
+Items move to `Ready` when they have a feature document in `docs/features/`.
 
 ```mermaid
 %%{init: {
   "theme": "base",
   "themeVariables": {
-    "cScale0": "#c8f7c5",
-    "cScaleLabel0": "#1b5e20",
-    "cScale1": "#fff3cd",
-    "cScaleLabel1": "#7a5a00",
-    "cScale2": "#e3f2fd",
-    "cScaleLabel2": "#0d47a1"
+    "cScale0": "#e8f5e9",
+    "cScaleLabel0": "#2e7d32",
+    "cScale1": "#c8f7c5",
+    "cScaleLabel1": "#1b5e20",
+    "cScale2": "#fff3cd",
+    "cScaleLabel2": "#7a5a00",
+    "cScale3": "#e3f2fd",
+    "cScaleLabel3": "#0d47a1"
   }
 }}%%
 
 timeline
     title Rustyfarian RGB Clock Roadmap
 
-    Near term : Tier 1 — Expand clock-pure host tests (done)
-              : CI pipeline split and cargo-deny (done)
-              : Dependency alignment — esp-idf-hal 0.46, MqttBuilder (done)
-              : Tier 2 — Wokwi simulation (done)
+    Near term : Cut v0.2.0 release — verify build, CHANGELOG, version bump, tag (in progress)
+              : Pin cross-repo deps to release tags — ws2812 v0.5.0, network v0.2.1
+              : README refresh — drop led-effects row, add Wokwi prose section
+              : Write docs/architecture.md — threading model, MQTT callback, AtomicBool signal
+              : Write docs/wokwi-simulation.md — what is modelled, CI usage, limits
+              : Resolve experimental feature flag — document or delete
 
-    Mid term  : Tier 3 — Hardware-in-the-Loop on Raspberry Pi (after Tier 1)
-              : Testing playbook documentation
+    Mid term  : Write docs/testing-pyramid.md — all three tiers, what each catches and misses
+              : Tier 3 — Hardware-in-the-Loop on Raspberry Pi (after Tier 2)
+              : Audit clock-pure boundary tests — 0, 11, 12, 23, 59 edge cases
+              : Migrate clock-pure Rgb tuple to RGB8 type from rgb crate (after boundary test audit)
+              : Expand Wokwi CI matrix — additional scenarios per new upstream features
 
-    Long term : Cross-project adoption validation
+    Long term : Workspace meta-doc — all four repos, roles, and coordination rules
+              : Async and Embassy migration (after network ships async MQTT)
+              : Cross-project adoption validation
               : Raw RGB data via MQTT (testing vehicle)
 ```
 
