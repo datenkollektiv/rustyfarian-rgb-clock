@@ -13,23 +13,36 @@ _default:
 
 # --- Build & Check -----------------------------------------------------------
 
-# build firmware (release)
-build:
-    cargo build --release
+# build firmware for a named chip target (e.g. idf_c6_rgb_clock, idf_c3_rgb_clock)
+build example="idf_c6_rgb_clock":
+    scripts/build.sh "{{example}}"
 
-# check the entire workspace
-check:
-    cargo check
+# check the firmware for a named chip target (e.g. idf_c6_rgb_clock, idf_c3_rgb_clock)
+check example="idf_c6_rgb_clock":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$(scripts/chip-env.sh '{{example}}')"
+    printf 'Checking %s (MCU=%s, target=%s)...\n' '{{example}}' "$MCU" "$TARGET"
+    MCU="$MCU" cargo check --target "$TARGET"
 
 # --- Flash & Monitor ---------------------------------------------------------
 
-# build, flash, and open serial monitor
-flash: build
-    cargo espflash flash --release --partition-table partitions.csv --monitor
+# build and flash firmware; does not open the monitor — run `just monitor` after (e.g. idf_c6_rgb_clock, idf_c3_rgb_clock)
+flash example="idf_c6_rgb_clock":
+    scripts/flash.sh "{{example}}"
+
+# flash firmware and open serial monitor (e.g. idf_c6_rgb_clock, idf_c3_rgb_clock)
+run example="idf_c6_rgb_clock": (flash example)
+    just monitor
 
 # open serial monitor (no flash)
 monitor:
-    espflash monitor
+    #!/usr/bin/env bash
+    set -euo pipefail
+    port="$(scripts/detect-port.sh)"
+    port_args=()
+    [ -n "$port" ] && port_args=(--port "$port")
+    espflash monitor "${port_args[@]}"
 
 # erase ESP32 flash (needed after sdkconfig changes)
 [confirm]
@@ -89,6 +102,12 @@ update:
 # clean build artifacts
 clean:
     cargo clean
+
+# clean only the IDF crate's build artifacts for both chips (needed after sdkconfig changes or chip switch)
+clean-idf:
+    cargo clean -p rustyfarian-rgb-clock
+    rm -rf target/riscv32imac-esp-espidf/release/build/esp-idf-sys-*/
+    rm -rf target/riscv32imc-esp-espidf/release/build/esp-idf-sys-*/
 
 # watch and re-run tests on file changes (requires cargo-watch)
 watch:
