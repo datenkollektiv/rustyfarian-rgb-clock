@@ -22,12 +22,12 @@ esp-idf-svc = "0.52"
 clock-pure = { path = "crates/clock-pure" }
 
 # External crates from rustyfarian-ws2812 repo
-ferriswheel = { git = "https://github.com/datenkollektiv/rustyfarian-ws2812" }
-rustyfarian-esp-idf-ws2812 = { git = "https://github.com/datenkollektiv/rustyfarian-ws2812" }
+ferriswheel = { git = "https://github.com/datenkollektiv/rustyfarian-ws2812", tag = "v0.5.0" }
+rustyfarian-esp-idf-ws2812 = { git = "https://github.com/datenkollektiv/rustyfarian-ws2812", tag = "v0.5.0" }
 
 # External crates from rustyfarian-network repo
-rustyfarian-esp-idf-mqtt = { git = "https://github.com/datenkollektiv/rustyfarian-network" }
-rustyfarian-esp-idf-wifi = { git = "https://github.com/datenkollektiv/rustyfarian-network" }
+rustyfarian-esp-idf-mqtt = { git = "https://github.com/datenkollektiv/rustyfarian-network", tag = "v0.2.1" }
+rustyfarian-esp-idf-wifi = { git = "https://github.com/datenkollektiv/rustyfarian-network", tag = "v0.2.1" }
 
 [package]
 name = "rustyfarian-rgb-clock"

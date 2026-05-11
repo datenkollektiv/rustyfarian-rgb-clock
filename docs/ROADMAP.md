@@ -24,8 +24,8 @@ Items move to `Ready` when they have a feature document in `docs/features/`.
 timeline
     title Rustyfarian RGB Clock Roadmap
 
-    Near term : Cut v0.2.0 release — verify build, CHANGELOG, version bump, tag (in progress)
-              : Pin cross-repo deps to release tags — ws2812 v0.5.0, network v0.2.1
+    Near term : Pin cross-repo deps to release tags — ws2812 v0.5.0, network v0.2.1
+              : Cut v0.2.0 release — verify build, CHANGELOG, version bump, tag (in progress)
               : README refresh — drop led-effects row, add Wokwi prose section
               : Write docs/architecture.md — threading model, MQTT callback, AtomicBool signal
               : Write docs/wokwi-simulation.md — what is modelled, CI usage, limits
