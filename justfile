@@ -98,6 +98,12 @@ watch:
 setup-cargo-config:
     cp .cargo/config.toml.dist .cargo/config.toml
 
+# simulate CI dependency resolution locally (CI always generates a fresh lock without path patches)
+# useful to verify cross-repo crate unification before pushing
+lock-ci: setup-cargo-config
+    cargo update -p pennant -p bunting -p ferriswheel -p rustyfarian-esp-idf-ws2812 -p rustyfarian-esp-idf-wifi -p rustyfarian-esp-idf-mqtt -p rustyfarian-network-pure -p wifi-pure
+    @echo "Done. Run 'just setup-cargo-config' and restore your dev patches when finished."
+
 # --- Local CI (act) ----------------------------------------------------------
 
 # run CI workflow locally via act (requires Docker + act)
