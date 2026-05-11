@@ -11,8 +11,14 @@ const REQUIRED_ENV_VARS: &[(&str, &str)] = &[
 ];
 
 fn main() {
-    // Only re-run if .env changes
+    // Only re-run if .env or MCU changes
     println!("cargo:rerun-if-changed=.env");
+    println!("cargo:rerun-if-env-changed=MCU");
+
+    // Emit a cfg flag so main.rs can select chip-specific GPIO assignments with #[cfg(mcu = "...")]
+    println!("cargo:rustc-check-cfg=cfg(mcu, values(\"esp32c3\", \"esp32c6\"))");
+    let mcu = std::env::var("MCU").unwrap_or_else(|_| "esp32c6".to_string());
+    println!("cargo:rustc-cfg=mcu=\"{mcu}\"");
 
     let mut env_vars: HashMap<String, String> = HashMap::new();
 

@@ -26,18 +26,48 @@ An ESP32-C6 RGB LED clock that displays time using 12 WS2812 NeoPixel LEDs arran
 
 *Full vision, success signals, and open questions: [VISION.md](./VISION.md)*
 
+## Hardware
+
+| Signal                   | ESP32-C6 pin | ESP32-C3 pin |
+|:-------------------------|:-------------|:-------------|
+| WS2812 clock ring (DIN)  | **GPIO 10**  | **GPIO 10**  |
+| Onboard RGB LED          | GPIO 8       | GPIO 8       |
+
+Pin assignments live in `src/main.rs`.
+
 ## Quick Start
 
-Build
+Build for ESP32-C6 (default)
 
 ```sh
 just build
 ```
 
-Flash and monitor (requires espflash)
+Build for ESP32-C3
 
 ```sh
-just flash
+just build idf_c3_rgb_clock
+```
+
+Flash and open monitor (ESP32-C6 default)
+
+```sh
+just run
+just monitor
+```
+
+Flash or run for ESP32-C3
+
+```sh
+just flash idf_c3_rgb_clock
+just run idf_c3_rgb_clock
+```
+
+Port auto-detection in `scripts/detect-port.sh` works on macOS and Linux.
+On Windows, set `ESPFLASH_PORT` before flashing:
+
+```sh
+ESPFLASH_PORT=COM3 just flash
 ```
 
 Run all pre-commit checks (format, check, clippy, test)
@@ -72,7 +102,7 @@ Since the default flash size of 1MB may not be enough, `just flash` uses a custo
 The underlying command is:
 
 ```sh
-cargo espflash flash --partition-table partitions.csv --monitor
+cargo espflash flash --partition-table partitions.csv
 ```
 
 ## Dependencies
