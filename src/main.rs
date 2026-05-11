@@ -11,6 +11,8 @@ use rustyfarian_esp_idf_ws2812::WS2812RMT;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+const MQTT_TOPIC: &str = "tick";
+
 fn main() -> anyhow::Result<()> {
     // It is necessary to call this function once. Otherwise, some patches to the runtime
     // implemented by esp-idf-sys might not link properly. See https://github.com/esp-rs/esp-idf-template/issues/71
@@ -23,7 +25,9 @@ fn main() -> anyhow::Result<()> {
     let sys_loop = EspSystemEventLoop::take()?;
     let nvs = EspDefaultNvsPartition::take()?;
 
-    // ESP32-C6 GPIO10 for the NeoPixel clock - start animation before WiFi
+    // GPIO 10 for the clock ring and GPIO 8 for the onboard status LED are the
+    // same on both supported chips (ESP32-C3 and ESP32-C6). The MCU cfg flag
+    // emitted by build.rs is available for future pin divergence if needed.
     let clock_driver = WS2812RMT::new(peripherals.pins.gpio10)?;
     let rgb_clock = RGBClock::new(clock_driver)?;
 
@@ -39,17 +43,16 @@ fn main() -> anyhow::Result<()> {
     const WIFI_SSID: &str = env!("WIFI_SSID");
     const WIFI_PASS: &str = env!("WIFI_PASS");
 
-    // ESP32-C6 DevKit onboard RGB LED is on GPIO8
-    let mut driver = WS2812RMT::new(peripherals.pins.gpio8)?;
+    // Onboard RGB LED for Wi-Fi status
+    let mut onboard_led = WS2812RMT::new(peripherals.pins.gpio8)?;
 
-    // Initialize Wi-Fi with an LED indicator
     let wifi_config = WiFiConfig::new(WIFI_SSID, WIFI_PASS);
     let wifi = WiFiManager::new(
         peripherals.modem,
         sys_loop,
         Some(nvs),
         wifi_config,
-        Some(&mut driver),
+        Some(&mut onboard_led),
     )?;
 
     // Wait some seconds for an IP address
@@ -71,13 +74,21 @@ fn main() -> anyhow::Result<()> {
         .parse()
         .context("MQTT_PORT must be a valid port number (0-65535)")?;
     let mqtt_config = MqttConfig::new(MQTT_HOST, mqtt_port, MQTT_CLIENT_ID);
+
+    // Calling subscribe() from inside the on_connect callback deadlocks on
+    // esp-idf-svc 0.52+: subscribe() blocks waiting for SUBACK, but the event
+    // loop is stuck inside the callback and cannot process the SUBACK.
+    // Instead, on_connect sets a flag that a dedicated thread picks up and
+    // calls subscribe() from a normal (non-callback) thread context.
+    let subscribe_needed = Arc::new(AtomicBool::new(false));
+    let subscribe_flag = Arc::clone(&subscribe_needed);
+
     let _mqtt = MqttBuilder::new(mqtt_config)
-        .on_connect(|client, _is_clean| {
-            use esp_idf_svc::mqtt::client::QoS;
-            client.subscribe("tick", QoS::AtLeastOnce)?;
+        .on_connect(move |_client, _is_clean| {
+            subscribe_flag.store(true, Ordering::Release);
             Ok(())
         })
-        .on_message(move |_topic: &str, data: &[u8]| {
+        .on_message(move |topic: &str, data: &[u8]| {
             use rgb_clock::LocalTime;
 
             // Cancel any running startup animation on the first time update
@@ -85,6 +96,13 @@ fn main() -> anyhow::Result<()> {
 
             match LocalTime::try_from(data) {
                 Ok(time) => {
+                    log::debug!(
+                        "tick [{}] -> {:02}:{:02}:{:02}",
+                        topic,
+                        time.hour,
+                        time.minute,
+                        time.second
+                    );
                     if let Ok(mut c) = clock_clone.lock() {
                         if let Err(e) = c.set_local_time(time) {
                             log::error!("Failed to set time: {:?}", e);
@@ -97,6 +115,27 @@ fn main() -> anyhow::Result<()> {
             }
         })
         .build()?;
+
+    // Subscription watcher: subscribes to MQTT_TOPIC on every (re)connect.
+    // On failure we do NOT re-arm the flag — the next on_connect will set it
+    // again, avoiding a retry storm during broker or network outages.
+    {
+        use esp_idf_svc::mqtt::client::QoS;
+        let mqtt_for_sub = _mqtt.clone();
+        std::thread::Builder::new()
+            .stack_size(4096)
+            .name("mqtt-subscribe-watcher".into())
+            .spawn(move || loop {
+                if subscribe_needed.swap(false, Ordering::AcqRel) {
+                    match mqtt_for_sub.subscribe(MQTT_TOPIC, QoS::AtLeastOnce) {
+                        Ok(()) => log::info!("Subscribed to '{}'", MQTT_TOPIC),
+                        Err(e) => log::error!("Subscribe failed: {:?}", e),
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            })
+            .context("failed to spawn subscription watcher thread")?;
+    }
 
     log::info!("Setup complete, parking main thread");
     // Park the main thread indefinitely - MQTT callbacks handle all work
