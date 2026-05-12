@@ -3,7 +3,8 @@
 *Last updated: May 2026*
 
 A May 2026 deep-dive review confirmed the near-term tier is complete and repositioned the project: the rgb-clock is the **integration test fixture** for the rustyfarian workspace — its testing pyramid validates that ws2812, network, and the embedded toolchain work together at every release.
-The immediate focus is cutting v0.2.0, which consolidates ~12 weeks of upstream-tracking work and establishes a stable, pinned integration baseline.
+v0.2.0 shipped on 2026-05-12, establishing a stable pinned integration baseline.
+The remaining near-term work is focused on the documentation layer for that baseline.
 Items move to `Ready` when they have a feature document in `docs/features/`.
 
 ```mermaid
@@ -24,8 +25,7 @@ Items move to `Ready` when they have a feature document in `docs/features/`.
 timeline
     title Rustyfarian RGB Clock Roadmap
 
-    Near term : Cut v0.2.0 release — verify build, CHANGELOG, version bump, tag (in progress)
-              : README refresh — drop led-effects row, add Wokwi prose section
+    Near term : README refresh — drop led-effects row, add Wokwi prose section
               : Write docs/architecture.md — threading model, MQTT callback, AtomicBool signal
               : Write docs/wokwi-simulation.md — what is modelled, CI usage, limits
 
