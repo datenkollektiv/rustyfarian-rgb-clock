@@ -52,10 +52,9 @@ opt-level = "s"
 debug = true    # Symbols are nice, and they don't increase the size on Flash
 opt-level = "z"
 
+# No optional crate-level features are currently defined. This section is intentionally empty.
 [features]
 default = []
-
-experimental = ["esp-idf-svc/experimental"]
 
 [dependencies]
 anyhow.workspace = true
