@@ -26,3 +26,10 @@ Keep all project-related context here:
 - Local development uses path patches in `.cargo/config.toml` to point at sibling repos
   (rustyfarian-ws2812, rustyfarian-network) — comment out patches to build against git refs
 - `AGENTS.md` is the committed, public cross-tool guide
+
+## Lore Index
+
+`memory/MEMORY.md` is an index only — `docs/project-lore.md` is the source of truth for each entry.
+
+- MQTT subscribe-in-callback deadlock (`esp-idf-svc 0.52+`) — see `docs/project-lore.md` "MQTT & Networking"
+- Wokwi `save-to` path resolves relative to the scenario file — see `docs/project-lore.md` "Wokwi Simulation"
