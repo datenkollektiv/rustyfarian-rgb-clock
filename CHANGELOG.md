@@ -7,6 +7,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-12
+
 ### Added
 - Expanded `clock-pure` host test suite — color blending, edge cases, and hand-mapping boundary values.
 - CI pipeline split into separate jobs with `cargo-deny` dependency audit.
@@ -37,5 +39,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Custom `partitions.csv` and `sdkconfig.defaults` tuned for the ESP32-C6-DevKitC-1.
 - `.cargo/config.toml.dist` template with local path patch stubs for cross-repo development against `rustyfarian-ws2812` and `rustyfarian-network`.
 
-[Unreleased]: https://github.com/datenkollektiv/rustyfarian-rgb-clock/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/datenkollektiv/rustyfarian-rgb-clock/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/datenkollektiv/rustyfarian-rgb-clock/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/datenkollektiv/rustyfarian-rgb-clock/releases/tag/v0.1.0

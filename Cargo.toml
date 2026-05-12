@@ -31,7 +31,7 @@ rustyfarian-esp-idf-wifi = { git = "https://github.com/datenkollektiv/rustyfaria
 
 [package]
 name = "rustyfarian-rgb-clock"
-version = "0.1.0"
+version = "0.2.0"
 authors.workspace = true
 edition.workspace = true
 rust-version = "1.77"
