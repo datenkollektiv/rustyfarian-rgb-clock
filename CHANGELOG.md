@@ -12,9 +12,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - CI pipeline split into separate jobs with `cargo-deny` dependency audit.
 
 ### Changed
+- Pinned cross-repo dependencies to release tags — ws2812 v0.5.0, network v0.2.1.
 - Stabilised Wokwi simulation harness — merged binary with bootloader, UART console, and Tx/Rx wiring.
 - Updated `esp-idf-hal` to `0.46` and migrated MQTT integration to `MqttBuilder` lifecycle-callback API.
 - Renamed pure crate `clock-core` → `clock-pure` for consistency with the workspace `*-pure` convention.
+
+### Removed
+- Unused `experimental` Cargo feature gate (`esp-idf-svc/experimental`) — it was defined but never referenced in source code. No runtime behavior changed.
 
 ## [0.1.0] - 2026-02-13
 
