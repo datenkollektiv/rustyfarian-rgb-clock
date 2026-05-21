@@ -90,6 +90,22 @@ This constraint extends to reconnect handling: any code that reacts to connectio
 Non-obvious discoveries are recorded in `docs/project-lore.md`.
 Read it before any debugging task; add an entry after any fix that took more than 15 minutes or required knowledge not obvious from the error message.
 
+## Coding Principles
+
+- **State assumptions** before starting.
+  If a task has multiple valid interpretations, present them rather than picking silently.
+- **Simplicity first.**
+  Minimum code that solves the problem.
+  No features beyond what was asked.
+  No abstractions for single-use code.
+  No error handling for impossible scenarios.
+- **Surgical changes.**
+  Touch only what the task requires.
+  Do not improve adjacent code, comments, or formatting.
+  Every changed line should trace directly to the user's request.
+- When your changes create orphans (unused imports, variables, functions), remove them.
+  Do not remove pre-existing dead code unless asked.
+
 ## Important Files
 
 | File | Why to read first |
