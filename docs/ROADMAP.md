@@ -1,10 +1,10 @@
 # Roadmap
 
-*Last updated: May 2026*
+*Last updated: June 2026*
 
 A May 2026 deep-dive review confirmed the near-term tier is complete and repositioned the project: the rgb-clock is the **integration test fixture** for the rustyfarian workspace — its testing pyramid validates that ws2812, network, and the embedded toolchain work together at every release.
 v0.2.0 shipped on 2026-05-12, establishing a stable pinned integration baseline.
-The remaining near-term work is focused on the documentation layer for that baseline.
+Near-term work now leads with the first post-baseline feature — SoftAP provisioning to retire the env-baked Wi-Fi/MQTT credentials ([`docs/features/wifi-softap-provisioning-v1.md`](features/wifi-softap-provisioning-v1.md)) — alongside the documentation layer for that baseline.
 Items move to `Ready` when they have a feature document in `docs/features/`.
 
 ```mermaid
@@ -25,7 +25,8 @@ Items move to `Ready` when they have a feature document in `docs/features/`.
 timeline
     title Rustyfarian RGB Clock Roadmap
 
-    Near term : README refresh — drop led-effects row, add Wokwi prose section
+    Near term : SoftAP provisioning — replace env-baked Wi-Fi/MQTT credentials (feature-doc)
+              : README refresh — drop led-effects row, add Wokwi prose section
               : Write docs/architecture.md — threading model, MQTT callback, MqttBuilder subscriptions
               : Write docs/wokwi-simulation.md — what is modelled, CI usage, limits
 

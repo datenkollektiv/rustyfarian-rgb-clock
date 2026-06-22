@@ -32,14 +32,12 @@ clock-pure = { path = "crates/clock-pure" }
 ferriswheel = "0.6.0"
 rustyfarian-esp-idf-ws2812 = "0.6.0"
 
-# External crate from rustyfarian-network — published to crates.io at 0.4.0.
-# The former rustyfarian-esp-idf-{wifi,mqtt} crates were consolidated into this
-# single ESP-IDF crate. It defaults to `default = []` (no domain code compiled),
-# so `default-features = false` + an explicit feature list is required to pull in
-# only the wifi + mqtt domains this firmware uses.
-# MqttBuilder-managed subscriptions keep SUBACK-safe reconnect handling in the
-# network crate instead of this firmware.
-rustyfarian-esp-idf-network = { version = "0.4.0", default-features = false, features = ["wifi", "mqtt"] }
+# External crate from rustyfarian-network. PRE-RELEASE git pin: the published
+# crates.io 0.4.0 predates the `WifiMqttBoot` / `run_wifi_mqtt_portal` boot API we
+# now consume (see docs/features/wifi-softap-provisioning-v1.md). Pinned to the
+# commit that adds it; flip back to a crates.io `version = "..."` once that lands
+# in a release. `default = []`, so an explicit feature list is required.
+rustyfarian-esp-idf-network = { git = "https://github.com/datenkollektiv/rustyfarian-network", rev = "c0aabac99a621dc37b4a9000803dddca8f46a241", default-features = false, features = ["wifi", "mqtt", "provisioning"] }
 
 [package]
 name = "rustyfarian-rgb-clock"

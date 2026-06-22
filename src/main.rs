@@ -2,12 +2,18 @@ mod rgb_clock;
 
 use crate::rgb_clock::RGBClock;
 use anyhow::Context;
+use esp_idf_hal::gpio::Gpio8;
+use esp_idf_hal::modem::Modem;
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::mqtt::client::QoS;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
-use rustyfarian_esp_idf_network::mqtt::{MqttBuilder, MqttConfig};
-use rustyfarian_esp_idf_network::wifi::{WiFiConfig, WiFiManager};
+use rustyfarian_esp_idf_network::mqtt::MqttBuilder;
+use rustyfarian_esp_idf_network::provisioning::{
+    run_wifi_mqtt_portal, BootConfig, PortalConfig, PortalOutcome, ProvisioningEvent,
+    ProvisioningStore, SchemaProfile, WifiMqttBoot, WifiMqttLoadOutcome,
+};
+use rustyfarian_esp_idf_network::wifi::WiFiManager;
 use rustyfarian_esp_idf_ws2812::Ws2812Rmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -30,29 +36,67 @@ fn main() -> anyhow::Result<()> {
     // same on both supported chips (ESP32-C3 and ESP32-C6). The MCU cfg flag
     // emitted by build.rs is available for future pin divergence if needed.
     let clock_driver = Ws2812Rmt::new(peripherals.pins.gpio10)?;
-    let rgb_clock = RGBClock::new(clock_driver)?;
+    let clock = Arc::new(Mutex::new(RGBClock::new(clock_driver)?));
 
-    // Wrap clock in Arc<Mutex<>> for sharing between threads
-    let clock = Arc::new(Mutex::new(rgb_clock));
+    // Load the stored Wi-Fi + MQTT config, or fall into provisioning. The network
+    // crate's `WifiMqttBoot::load` is modem-free, so on the provisioned path we
+    // still own `peripherals.modem` for the STA boot; only the portal path claims
+    // it. See docs/features/wifi-softap-provisioning-v1.md.
+    let boot = match WifiMqttBoot::load(nvs.clone()).context("failed to read provisioning store")? {
+        WifiMqttLoadOutcome::Ready(boot) => boot,
+        WifiMqttLoadOutcome::NotProvisioned => {
+            log::info!("Not provisioned — entering SoftAP provisioning");
+            return run_provisioning(peripherals.modem, sys_loop, nvs, clock);
+        }
+        WifiMqttLoadOutcome::OtherProfile(profile) => {
+            log::warn!("Provisioned under {profile:?}, not WifiMqttDevice — re-provisioning");
+            return run_provisioning(peripherals.modem, sys_loop, nvs, clock);
+        }
+        // `WifiMqttLoadOutcome` is `#[non_exhaustive]`.
+        other => {
+            log::warn!("Unexpected load outcome {other:?} — entering provisioning");
+            return run_provisioning(peripherals.modem, sys_loop, nvs, clock);
+        }
+    };
 
+    log::info!("Provisioned (wifi_mqtt) — booting clock");
+    run_clock(
+        peripherals.modem,
+        sys_loop,
+        nvs,
+        peripherals.pins.gpio8,
+        clock,
+        boot,
+    )
+}
+
+/// Boots the clock in normal STA mode from a loaded provisioning bundle.
+///
+/// Steady-state path: rainbow startup animation, Wi-Fi connect, MQTT subscribe,
+/// then park while callbacks drive the display.
+fn run_clock(
+    modem: Modem<'static>,
+    sys_loop: EspSystemEventLoop,
+    nvs: EspDefaultNvsPartition,
+    onboard_pin: Gpio8,
+    clock: Arc<Mutex<RGBClock<'static>>>,
+    boot: WifiMqttBoot,
+) -> anyhow::Result<()> {
     // Start the startup animation in a background thread
     let animation_cancel = Arc::new(AtomicBool::new(false));
     let _animation_handle =
         rgb_clock::run_startup_animation(Arc::clone(&clock), Arc::clone(&animation_cancel));
 
-    // WiFi credentials from .env
-    const WIFI_SSID: &str = env!("WIFI_SSID");
-    const WIFI_PASS: &str = env!("WIFI_PASS");
-
     // Onboard RGB LED for Wi-Fi status
-    let mut onboard_led = Ws2812Rmt::new(peripherals.pins.gpio8)?;
+    let mut onboard_led = Ws2812Rmt::new(onboard_pin)?;
 
-    let wifi_config = WiFiConfig::new(WIFI_SSID, WIFI_PASS);
+    // `boot` owns the config strings; `wifi_config()` / `mqtt_config()` borrow them
+    // and are valid as long as `boot` lives (it outlives both uses below).
     let wifi = WiFiManager::new(
-        peripherals.modem,
+        modem,
         sys_loop,
         Some(nvs),
-        wifi_config,
+        boot.wifi_config(),
         Some(&mut onboard_led),
     )?;
 
@@ -71,27 +115,25 @@ fn main() -> anyhow::Result<()> {
         log::error!("Failed to get IP address within timeout; continuing — MQTT will connect once Wi-Fi is up");
     }
 
-    // MQTT configuration from .env
-    const MQTT_HOST: &str = env!("MQTT_HOST");
-    const MQTT_PORT: &str = env!("MQTT_PORT");
-    const MQTT_CLIENT_ID: &str = env!("MQTT_CLIENT_ID");
-
-    // Connect to MQTT broker - MUST assign to a variable to keep it alive!
     let clock_clone = Arc::clone(&clock);
     let animation_cancel_clone = Arc::clone(&animation_cancel);
-    let mqtt_port: u16 = MQTT_PORT
-        .parse()
-        .context("MQTT_PORT must be a valid port number (0-65535)")?;
-    let mqtt_config = MqttConfig::new(MQTT_HOST, mqtt_port, MQTT_CLIENT_ID);
+
+    let mqtt_config = boot.mqtt_config();
+    // Lengths only — never the secret values. Makes a rejected (e.g. empty) host
+    // or client_id diagnosable from serial without a debugger.
+    log::info!(
+        "MQTT target: host len={}, port={}, client_id len={}",
+        mqtt_config.host.len(),
+        mqtt_config.port,
+        mqtt_config.client_id.len()
+    );
 
     // Subscription is managed by the builder, not by this firmware. The
     // contract we rely on from rustyfarian-esp-idf-network (documented on
     // `MqttBuilder::subscribe`): the topic is (re)subscribed on every broker
     // `Connected` event — both the initial connection and every automatic
     // reconnect — and a failed SUBSCRIBE is logged and retried on the next
-    // reconnect rather than dropped forever. This replaces the former local
-    // on_connect flag + watcher-thread workaround for the esp-idf-svc 0.52+
-    // subscribe-in-callback SUBACK deadlock, which now lives in the crate.
+    // reconnect rather than dropped forever.
     let _mqtt = MqttBuilder::new(mqtt_config)
         .subscribe(MQTT_TOPIC, QoS::AtLeastOnce)
         .on_message(move |topic: &str, data: &[u8]| {
@@ -140,4 +182,71 @@ fn main() -> anyhow::Result<()> {
     std::thread::park();
 
     Ok(())
+}
+
+/// Runs the SoftAP captive portal until a terminal outcome, then restarts.
+///
+/// On the first boot (empty store) the ring shows the amber "pairing mode" pulse while
+/// the open AP and portal wait for the user to submit Wi-Fi + MQTT settings. The
+/// network crate owns the portal lifecycle and never reboots/erases itself — this
+/// firmware cancels the pulse, handles the outcome, and restarts.
+fn run_provisioning(
+    modem: Modem<'static>,
+    sys_loop: EspSystemEventLoop,
+    nvs: EspDefaultNvsPartition,
+    clock: Arc<Mutex<RGBClock<'static>>>,
+) -> anyhow::Result<()> {
+    // Amber "pairing mode" pulse on the ring while the portal waits.
+    let pulse_cancel = Arc::new(AtomicBool::new(false));
+    let _pulse_handle =
+        rgb_clock::run_provisioning_animation(Arc::clone(&clock), Arc::clone(&pulse_cancel));
+
+    // Keep a clone for the factory-reset erase path before `nvs` is moved.
+    let nvs_for_erase = nvs.clone();
+
+    // Open AP (no PSK): a conscious v1 tradeoff for local, physical first-boot
+    // setup. See the "Security stance" section of the feature doc.
+    let boot_config = BootConfig {
+        portal: PortalConfig {
+            ssid_prefix: "Rustyfarian",
+            ap_password: None,
+            channel: 1,
+            device_name: "rgb-clock",
+            firmware_version: env!("CARGO_PKG_VERSION"),
+            profile: SchemaProfile::WifiMqttDevice,
+        },
+        // First boot has no deadline — block until the user provisions.
+        portal_timeout: None,
+        on_event: Some(Arc::new(|event: ProvisioningEvent| {
+            log::info!("Provisioning event: {event:?}");
+        })),
+    };
+
+    let outcome = run_wifi_mqtt_portal(modem, sys_loop, nvs, boot_config)
+        .context("provisioning portal failed")?;
+
+    // Stop the amber pulse before restarting.
+    pulse_cancel.store(true, Ordering::Relaxed);
+
+    match outcome {
+        PortalOutcome::JustProvisioned => {
+            log::info!("Provisioning committed — restarting into normal boot");
+        }
+        PortalOutcome::FactoryResetRequested => {
+            // Erase the provisioning namespace so the next boot re-enters the portal.
+            // Best-effort: log and restart even if the erase fails — a stranded
+            // device is worse than a retry on the next boot.
+            match ProvisioningStore::open(nvs_for_erase).and_then(|mut s| s.erase_all()) {
+                Ok(()) => log::info!("Factory reset — provisioning store erased"),
+                Err(e) => log::warn!("Factory reset: erase_all failed (retry next boot): {e:#}"),
+            }
+        }
+        PortalOutcome::PortalExitedWithoutCommit => {
+            log::warn!("Portal exited without a commit — restarting to re-open the portal");
+        }
+        // `PortalOutcome` is `#[non_exhaustive]`.
+        other => log::warn!("Unexpected portal outcome {other:?} — restarting"),
+    }
+
+    esp_idf_svc::hal::reset::restart()
 }

@@ -28,6 +28,12 @@ Fix: ensure both crates resolve to the same `pennant` source and version. When `
 Cargo's `[patch]` mechanism uses the source URL as the section key.
 If the key is wrong, Cargo silently uses the published crates.io version instead of the local sibling repo and emits "patch was not used in the crate graph" warnings — local dev patches have no effect without a clear error.
 
+**`cargo deny` flags advisories on crates this firmware never compiles, because it scans the whole `Cargo.lock`, not the enabled-feature graph.**
+`RUSTSEC-2023-0089` (`atomic-polyfill` unmaintained) fails `just deny` even though it sits behind the network crate's `lora` feature (`atomic-polyfill → heapless 0.7 → lorawan-device → juggler`), which we never enable (`features = ["wifi", "mqtt", "provisioning"]`).
+`Cargo.lock` records feature-gated-off optional deps, and cargo-deny checks the full lockfile.
+Fix: add a justified `[advisories] ignore` entry in `deny.toml` (note the chain + that it is never built), rather than chasing a non-existent compiled dependency.
+Related: after migrating off git deps, empty `[sources] allow-git` — stale entries emit `unmatched-source` warnings since crates.io/local-path sources never match them.
+
 ---
 
 ## Clock Display

@@ -80,8 +80,29 @@ Run all pre-commit checks (format, check, clippy, test)
 just verify
 ```
 
-Requires a `.env` file with Wi-Fi and MQTT credentials (see `.env.example`).
+Wi-Fi and MQTT credentials are provisioned at runtime via a SoftAP captive portal — no `.env` is needed.
+On first boot (or after `just erase-flash`) the clock ring pulses amber and the device hosts an open `Rustyfarian-XXXX` access point; connect to it, open the captive portal, and submit your Wi-Fi + MQTT details.
+See [docs/features/wifi-softap-provisioning-v1.md](docs/features/wifi-softap-provisioning-v1.md) for details.
 Run `just setup-cargo-config` to create `.cargo/config.toml` from the template.
+
+### Reprovisioning & recovery
+
+To change credentials — or recover from a mistyped password, a broker change, or a renamed/vanished
+Wi-Fi network — clear the stored config and reboot back into the portal:
+
+```sh
+just erase-flash
+```
+
+Then power-cycle the device, join the open `Rustyfarian-XXXX` access point, open the captive portal, and
+submit the new Wi-Fi + MQTT details.
+This requires host tooling and a cable today; a cable-free BOOT-button trigger is a planned follow-up.
+
+The provisioning AP is **open (no password)** by default — a conscious tradeoff for local, physical,
+first-boot setup, not a convenience default.
+It is reachable only while the device is unprovisioned and is never exposed over the joined network.
+See the [threat model](docs/features/wifi-softap-provisioning-v1.md#security-stance--threat-model) for the
+accepted residual risk and the WPA2 hardening path.
 
 ## MQTT Time Format
 
