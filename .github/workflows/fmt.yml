@@ -32,5 +32,8 @@ jobs:
           toolchain: stable
           components: rustfmt
 
+      - name: Setup just
+        uses: extractions/setup-just@v2
+
       - name: Check formatting
-        run: cargo fmt --all --check
+        run: just fmt-check

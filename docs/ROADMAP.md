@@ -26,7 +26,7 @@ timeline
     title Rustyfarian RGB Clock Roadmap
 
     Near term : README refresh — drop led-effects row, add Wokwi prose section
-              : Write docs/architecture.md — threading model, MQTT callback, AtomicBool signal
+              : Write docs/architecture.md — threading model, MQTT callback, MqttBuilder subscriptions
               : Write docs/wokwi-simulation.md — what is modelled, CI usage, limits
 
     Mid term  : Write docs/testing-pyramid.md — all three tiers, what each catches and misses

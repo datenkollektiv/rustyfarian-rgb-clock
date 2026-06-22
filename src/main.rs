@@ -4,10 +4,11 @@ use crate::rgb_clock::RGBClock;
 use anyhow::Context;
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
+use esp_idf_svc::mqtt::client::QoS;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
-use rustyfarian_esp_idf_mqtt::{MqttBuilder, MqttConfig};
-use rustyfarian_esp_idf_wifi::{WiFiConfig, WiFiManager};
-use rustyfarian_esp_idf_ws2812::WS2812RMT;
+use rustyfarian_esp_idf_network::mqtt::{MqttBuilder, MqttConfig};
+use rustyfarian_esp_idf_network::wifi::{WiFiConfig, WiFiManager};
+use rustyfarian_esp_idf_ws2812::Ws2812Rmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -28,7 +29,7 @@ fn main() -> anyhow::Result<()> {
     // GPIO 10 for the clock ring and GPIO 8 for the onboard status LED are the
     // same on both supported chips (ESP32-C3 and ESP32-C6). The MCU cfg flag
     // emitted by build.rs is available for future pin divergence if needed.
-    let clock_driver = WS2812RMT::new(peripherals.pins.gpio10)?;
+    let clock_driver = Ws2812Rmt::new(peripherals.pins.gpio10)?;
     let rgb_clock = RGBClock::new(clock_driver)?;
 
     // Wrap clock in Arc<Mutex<>> for sharing between threads
@@ -44,7 +45,7 @@ fn main() -> anyhow::Result<()> {
     const WIFI_PASS: &str = env!("WIFI_PASS");
 
     // Onboard RGB LED for Wi-Fi status
-    let mut onboard_led = WS2812RMT::new(peripherals.pins.gpio8)?;
+    let mut onboard_led = Ws2812Rmt::new(peripherals.pins.gpio8)?;
 
     let wifi_config = WiFiConfig::new(WIFI_SSID, WIFI_PASS);
     let wifi = WiFiManager::new(
@@ -55,11 +56,19 @@ fn main() -> anyhow::Result<()> {
         Some(&mut onboard_led),
     )?;
 
-    // Wait some seconds for an IP address
+    // Wait some seconds for an IP address.
+    //
+    // We intentionally continue past a timeout rather than returning an error:
+    // the MQTT client below runs its own auto-reconnecting background event loop
+    // (build() returns immediately and connects asynchronously), so a slow DHCP
+    // lease or a Wi-Fi blip at boot should not abort startup. The clock keeps
+    // showing its rainbow until the first tick arrives once connectivity is up.
+    // A hard failure here would only turn a recoverable, transient delay into a
+    // dark device that needs a manual reboot.
     if let Some(ip) = wifi.get_ip(10000)? {
         log::info!("Got IP address: {:?}", ip);
     } else {
-        log::error!("Failed to get IP address within timeout");
+        log::error!("Failed to get IP address within timeout; continuing — MQTT will connect once Wi-Fi is up");
     }
 
     // MQTT configuration from .env
@@ -75,23 +84,24 @@ fn main() -> anyhow::Result<()> {
         .context("MQTT_PORT must be a valid port number (0-65535)")?;
     let mqtt_config = MqttConfig::new(MQTT_HOST, mqtt_port, MQTT_CLIENT_ID);
 
-    // Calling subscribe() from inside the on_connect callback deadlocks on
-    // esp-idf-svc 0.52+: subscribe() blocks waiting for SUBACK, but the event
-    // loop is stuck inside the callback and cannot process the SUBACK.
-    // Instead, on_connect sets a flag that a dedicated thread picks up and
-    // calls subscribe() from a normal (non-callback) thread context.
-    let subscribe_needed = Arc::new(AtomicBool::new(false));
-    let subscribe_flag = Arc::clone(&subscribe_needed);
-
+    // Subscription is managed by the builder, not by this firmware. The
+    // contract we rely on from rustyfarian-esp-idf-network (documented on
+    // `MqttBuilder::subscribe`): the topic is (re)subscribed on every broker
+    // `Connected` event — both the initial connection and every automatic
+    // reconnect — and a failed SUBSCRIBE is logged and retried on the next
+    // reconnect rather than dropped forever. This replaces the former local
+    // on_connect flag + watcher-thread workaround for the esp-idf-svc 0.52+
+    // subscribe-in-callback SUBACK deadlock, which now lives in the crate.
     let _mqtt = MqttBuilder::new(mqtt_config)
-        .on_connect(move |_client, _is_clean| {
-            subscribe_flag.store(true, Ordering::Release);
-            Ok(())
-        })
+        .subscribe(MQTT_TOPIC, QoS::AtLeastOnce)
         .on_message(move |topic: &str, data: &[u8]| {
             use rgb_clock::LocalTime;
 
-            // Cancel any running startup animation on the first time update
+            // Cancel any running startup animation on the first time update.
+            // Relaxed is sufficient: this is a standalone one-bit stop flag that
+            // publishes no other memory, and the shared LED state is serialized by
+            // the clock mutex below — the animation thread re-reads this flag under
+            // that same lock before writing, so no happens-before edge is needed here.
             animation_cancel_clone.store(true, Ordering::Relaxed);
 
             match LocalTime::try_from(data) {
@@ -103,10 +113,17 @@ fn main() -> anyhow::Result<()> {
                         time.minute,
                         time.second
                     );
-                    if let Ok(mut c) = clock_clone.lock() {
-                        if let Err(e) = c.set_local_time(time) {
-                            log::error!("Failed to set time: {:?}", e);
+                    match clock_clone.lock() {
+                        Ok(mut c) => {
+                            if let Err(e) = c.set_local_time(time) {
+                                log::error!("Failed to set time: {:?}", e);
+                            }
                         }
+                        // Don't drop ticks silently: a panic in another clock user
+                        // (e.g. the startup animation thread) poisons this mutex, which
+                        // would otherwise freeze the display forever with no clue in the
+                        // logs as to why time updates stopped.
+                        Err(e) => log::error!("Clock mutex poisoned, skipping tick: {:?}", e),
                     }
                 }
                 Err(e) => {
@@ -116,29 +133,10 @@ fn main() -> anyhow::Result<()> {
         })
         .build()?;
 
-    // Subscription watcher: subscribes to MQTT_TOPIC on every (re)connect.
-    // On failure we do NOT re-arm the flag — the next on_connect will set it
-    // again, avoiding a retry storm during broker or network outages.
-    {
-        use esp_idf_svc::mqtt::client::QoS;
-        let mqtt_for_sub = _mqtt.clone();
-        std::thread::Builder::new()
-            .stack_size(4096)
-            .name("mqtt-subscribe-watcher".into())
-            .spawn(move || loop {
-                if subscribe_needed.swap(false, Ordering::AcqRel) {
-                    match mqtt_for_sub.subscribe(MQTT_TOPIC, QoS::AtLeastOnce) {
-                        Ok(()) => log::info!("Subscribed to '{}'", MQTT_TOPIC),
-                        Err(e) => log::error!("Subscribe failed: {:?}", e),
-                    }
-                }
-                std::thread::sleep(std::time::Duration::from_millis(100));
-            })
-            .context("failed to spawn subscription watcher thread")?;
-    }
-
     log::info!("Setup complete, parking main thread");
-    // Park the main thread indefinitely - MQTT callbacks handle all work
+    // Park the main thread indefinitely — runtime work runs on background threads:
+    // the MQTT event-loop callbacks (time updates) and, during boot, the startup
+    // animation thread.
     std::thread::park();
 
     Ok(())

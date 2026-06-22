@@ -1,5 +1,9 @@
 # ESP32 C6 RGB Clock
 
+<p>
+  <img src="docs/rustyfarian-rgb-clock.png" alt="rustyfarian-rgb-clock — a smart RGB clock powered by ferriswheel, juggler, and stoker, running on ESP32-C6. A steampunk control panel showing the rustyfarian mascots tending a 12-LED clock face that reads 20:24, with WS2812 LED control (ferriswheel), network &amp; messaging (juggler), and battery &amp; power management (stoker)." width="720">
+</p>
+
 [![CI](https://github.com/datenkollektiv/rustyfarian-rgb-clock/actions/workflows/rust.yml/badge.svg)](https://github.com/datenkollektiv/rustyfarian-rgb-clock/actions/workflows/rust.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-esp--toolchain-orange.svg)](https://github.com/esp-rs/rust)

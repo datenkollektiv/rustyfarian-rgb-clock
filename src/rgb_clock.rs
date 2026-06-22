@@ -3,7 +3,7 @@ use clock_pure::{add_colors, hour_to_index, minute_to_index, scale_color, second
 use ferriswheel::{Direction, RainbowEffect};
 use log::debug;
 use rgb::RGB8;
-use rustyfarian_esp_idf_ws2812::WS2812RMT;
+use rustyfarian_esp_idf_ws2812::Ws2812Rmt;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -26,7 +26,7 @@ pub struct RGBClock<'a> {
     minutes_base_color: Rgb,
     seconds_base_color: Rgb,
     brightness: u8,
-    driver: WS2812RMT<'a>,
+    driver: Ws2812Rmt<'a>,
     state: [Rgb; 12],
 }
 
@@ -39,7 +39,7 @@ impl<'a> RGBClock<'a> {
     /// - Hours: Blue (0, 0, 1)
     /// - Minutes: Green (0, 1, 0)
     /// - Seconds: Red (1, 0, 0)
-    pub fn new(driver: WS2812RMT<'a>) -> Result<Self> {
+    pub fn new(driver: Ws2812Rmt<'a>) -> Result<Self> {
         let clock = Self {
             hours_base_color: DEFAULT_HOUR_COLOR,
             minutes_base_color: DEFAULT_MINUTE_COLOR,
@@ -155,6 +155,16 @@ pub fn run_startup_animation(
 
             match clock.lock() {
                 Ok(mut c) => {
+                    // Re-check cancellation *under the lock* before writing. The
+                    // on_message handler sets `cancel` and renders the first real
+                    // clock frame while holding this same mutex. Without this
+                    // second check, an animation frame computed before cancellation
+                    // could still be flushed here — after the clock's first render —
+                    // overwriting it with a trailing rainbow frame for one cycle.
+                    if cancel.load(Ordering::Relaxed) {
+                        log::info!("Rainbow animation cancelled");
+                        return;
+                    }
                     if let Err(e) = c.set_pixels(&buffer) {
                         log::warn!("Animation display error: {:?}", e);
                     }
