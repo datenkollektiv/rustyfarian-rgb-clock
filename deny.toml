@@ -4,7 +4,17 @@ all-features = false
 no-default-features = false
 
 [advisories]
-ignore = []
+ignore = [
+    # atomic-polyfill is unmaintained (RUSTSEC-2023-0089) with no safe upgrade path.
+    # It is NOT compiled by this firmware — it appears in Cargo.lock only as a
+    # feature-gated-OFF transitive of the network crate's `lora` path, which we do
+    # not enable (features = ["wifi", "mqtt", "provisioning"]). Full chain:
+    #   atomic-polyfill 1.0.3 → heapless 0.7.17 → lorawan-device 0.12.2
+    #     → juggler 0.4.0 → rustyfarian-esp-idf-network 0.4.0
+    # cargo-deny scans the whole lockfile, so it flags the crate even though it is
+    # never built. Resolves when lorawan-device 0.12 moves off heapless 0.7.
+    "RUSTSEC-2023-0089",
+]
 
 [licenses]
 allow = [
@@ -27,7 +37,9 @@ highlight = "all"
 unknown-registry = "warn"
 unknown-git = "warn"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# ws2812 is consumed from crates.io. network is temporarily git-pinned (pre-release)
+# for the WifiMqttBoot boot API — remove this entry when Cargo.toml flips it back to
+# a crates.io version. (Local dev path-patches resolve as local sources, not git.)
 allow-git = [
-    "https://github.com/datenkollektiv/rustyfarian-ws2812",
     "https://github.com/datenkollektiv/rustyfarian-network",
 ]

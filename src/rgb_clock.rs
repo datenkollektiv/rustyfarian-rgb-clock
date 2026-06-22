@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clock_pure::{add_colors, hour_to_index, minute_to_index, scale_color, second_to_index, Rgb};
-use ferriswheel::{Direction, RainbowEffect};
+use ferriswheel::{Direction, PulseEffect, RainbowEffect};
 use log::debug;
 use rgb::RGB8;
 use rustyfarian_esp_idf_ws2812::Ws2812Rmt;
@@ -18,6 +18,19 @@ const DEFAULT_BRIGHTNESS: u8 = 10;
 const RAINBOW_SPEED: u8 = 3;
 const RAINBOW_BRIGHTNESS: u8 = 30;
 const RAINBOW_FRAME_DELAY_MS: u32 = 30;
+
+// Provisioning ("pairing mode") indicator: an amber breathing pulse on the full
+// ring. Amber sits outside the clock's blue/green/red hand palette, so it is never
+// confused with a running face. See docs/features/wifi-softap-provisioning-v1.md.
+const PROVISION_COLOR: RGB8 = RGB8 {
+    r: 255,
+    g: 120,
+    b: 0,
+};
+const PROVISION_PULSE_SPEED: u8 = 3;
+const PROVISION_MIN_BRIGHTNESS: u8 = 5;
+const PROVISION_MAX_BRIGHTNESS: u8 = 60;
+const PROVISION_FRAME_DELAY_MS: u32 = 30;
 
 /// An RGB LED clock that represents time using 12 RGB LEDs arranged in a circle.
 /// Each LED corresponds to an hour position on a traditional clock face.
@@ -173,6 +186,81 @@ pub fn run_startup_animation(
             }
 
             FreeRtos::delay_ms(RAINBOW_FRAME_DELAY_MS);
+        }
+    })
+}
+
+/// Runs the provisioning "pairing mode" indicator in a background thread.
+///
+/// Pulses the full clock ring amber (a `ferriswheel::PulseEffect`) while the
+/// SoftAP captive portal waits for credentials, signalling "configure me"
+/// without a serial cable. Cancelled the same way as the startup animation:
+/// the caller sets `cancel` once provisioning commits, just before restart.
+///
+/// # Arguments
+/// * `clock` - Shared reference to the RGB clock
+/// * `cancel` - Shared cancellation flag
+///
+/// # Returns
+/// A join handle for the indicator thread
+pub fn run_provisioning_animation(
+    clock: Arc<Mutex<RGBClock<'static>>>,
+    cancel: Arc<AtomicBool>,
+) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        use esp_idf_hal::delay::FreeRtos;
+
+        log::info!("Starting provisioning indicator (amber pulse)");
+
+        let mut pulse = match PulseEffect::new(12) {
+            Ok(p) => match p
+                .with_color(PROVISION_COLOR)
+                .with_speed(PROVISION_PULSE_SPEED)
+            {
+                Ok(p) => p
+                    .with_min_brightness(PROVISION_MIN_BRIGHTNESS)
+                    .with_max_brightness(PROVISION_MAX_BRIGHTNESS),
+                Err(e) => {
+                    log::error!("Failed to set provisioning pulse speed: {}", e);
+                    return;
+                }
+            },
+            Err(e) => {
+                log::error!("Failed to create provisioning pulse effect: {}", e);
+                return;
+            }
+        };
+
+        let mut buffer = [RGB8::default(); 12];
+
+        loop {
+            if cancel.load(Ordering::Relaxed) {
+                log::info!("Provisioning indicator cancelled");
+                return;
+            }
+
+            if let Err(e) = pulse.update(&mut buffer) {
+                log::warn!("Provisioning pulse update error: {}", e);
+                return;
+            }
+
+            match clock.lock() {
+                Ok(mut c) => {
+                    // Re-check under the lock before writing, mirroring the
+                    // startup animation's handoff: the caller cancels on commit
+                    // immediately before restart, so never flush a stale frame.
+                    if cancel.load(Ordering::Relaxed) {
+                        log::info!("Provisioning indicator cancelled");
+                        return;
+                    }
+                    if let Err(e) = c.set_pixels(&buffer) {
+                        log::warn!("Provisioning display error: {:?}", e);
+                    }
+                }
+                Err(e) => log::error!("Clock mutex poisoned: {:?}", e),
+            }
+
+            FreeRtos::delay_ms(PROVISION_FRAME_DELAY_MS);
         }
     })
 }

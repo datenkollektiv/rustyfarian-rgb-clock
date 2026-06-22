@@ -74,15 +74,8 @@ jobs:
       - name: Setup cargo config
         run: cp .cargo/config.toml.dist .cargo/config.toml
 
-      - name: Create CI environment file
-        run: |
-          cat > .env << 'EOF'
-          WIFI_SSID=Wokwi-GUEST
-          WIFI_PASS=
-          MQTT_HOST=test.mosquitto.org
-          MQTT_PORT=1883
-          MQTT_CLIENT_ID=wokwi-rgb-clock-ci
-          EOF
+      # Credentials are provisioned at runtime (SoftAP portal), not baked in, so
+      # no .env is needed to build. See docs/features/wifi-softap-provisioning-v1.md.
 
       - name: Configure UART console for Wokwi
         run: echo "CONFIG_ESP_CONSOLE_UART_DEFAULT=y" >> sdkconfig.defaults
