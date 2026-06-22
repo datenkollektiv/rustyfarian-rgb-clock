@@ -1,0 +1,47 @@
+name: Clippy
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clippy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTUP_TOOLCHAIN: stable
+
+# Fast, host-side lint gate for the pure `clock-pure` crate. The firmware clippy
+# runs in the `build` job of rust.yml, where the full ESP-IDF toolchain (nightly,
+# ldproxy, esp-idf-sys) is already set up — duplicating that here would only slow
+# CI down. This job gives early feedback on the platform-independent code without
+# waiting on the ~5-minute firmware build.
+jobs:
+  clippy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (stable + clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: clippy
+
+      - name: Setup just
+        uses: extractions/setup-just@v2
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run clippy (clock-pure)
+        run: just clippy-pure
