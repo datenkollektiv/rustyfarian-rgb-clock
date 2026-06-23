@@ -13,6 +13,24 @@ set dotenv-load := true
 host_target := `scripts/host-target.sh`
 esp_target  := "riscv32imac-esp-espidf"
 
+# Build RAM disk (macOS, optional): when `just ramdisk attach` has mounted
+# /Volumes/RustBuilds, cargo's target-dir is redirected there via CARGO_TARGET_DIR
+# to spare the SSD and speed up esp-idf-sys rebuilds. Falls back to ./target when the
+# disk is not mounted, so Linux/CI (which never mount it) are unaffected.
+# rust-analyzer keeps using ./target (it doesn't inherit this).
+ramdisk         := "/Volumes/RustBuilds"
+ramdisk_mounted := shell(justfile_directory() + '/scripts/ramdisk-mounted.sh "' + ramdisk + '"')
+idf_dir         := if ramdisk_mounted == "true" { ramdisk + "/targets/idf/" + file_name(justfile_directory()) } else { "target" }
+export CARGO_TARGET_DIR := idf_dir
+
+# Only when the target-dir lives on the RAM disk, install the heavy ESP-IDF tools to
+# the shared global ~/.espressif so they don't land on (and fill) the RAM disk. Off
+# the RAM disk — including CI, which never mounts it — keep the default per-project
+# .embuild ("workspace"), matching `.cargo/config.toml.dist`. This is why "global"
+# must NOT live in the committed config: CI would install globally and break
+# esp-idf-sys's ninja/compiler discovery.
+export ESP_IDF_TOOLS_INSTALL_DIR := if ramdisk_mounted == "true" { "global" } else { "workspace" }
+
 # list available recipes (default)
 _default:
     @just --list
@@ -158,12 +176,14 @@ update:
 clean:
     cargo clean
 
-# clean only the IDF crate's build artifacts for both chips (needed after sdkconfig changes or chip switch)
+# clean the IDF crate's stale esp-idf-sys artifacts for both chips, across all build
+# profiles (release from `just build`/`flash`, debug from `just check`) — needed
+# after sdkconfig changes or a chip switch
 [group("maintenance")]
 clean-idf:
     cargo clean -p rustyfarian-rgb-clock
-    rm -rf target/riscv32imac-esp-espidf/release/build/esp-idf-sys-*/
-    rm -rf target/riscv32imc-esp-espidf/release/build/esp-idf-sys-*/
+    rm -rf {{ idf_dir }}/riscv32imac-esp-espidf/*/build/esp-idf-sys-*/
+    rm -rf {{ idf_dir }}/riscv32imc-esp-espidf/*/build/esp-idf-sys-*/
 
 # set up local cargo config from the template
 [group("maintenance")]
@@ -181,10 +201,17 @@ lock-ci: setup-cargo-config
 setup:
     cargo install cargo-deny cargo-audit cargo-watch
 
-# report development tooling status (Rust, nightly toolchain, espflash, ldproxy, .env)
+# report development tooling status (Rust, toolchain, espflash, ldproxy, .env, RAM disk)
 [group("maintenance")]
 doctor:
-    @scripts/doctor.sh
+    @scripts/doctor.sh "{{ ramdisk }}" "{{ idf_dir }}"
+
+# manage the build RAM disk (macOS): just ramdisk attach | detach
+# Verify an attach: `just ramdisk attach && just doctor` — the "ramdisk" row should
+# read `ok … → target-dir: …/RustBuilds/…`; then `just check` builds into it.
+[group("maintenance")]
+ramdisk action:
+    @scripts/ramdisk.sh "{{ action }}"
 
 # ── Local CI (act) ───────────────────────────────────────────────────────────
 

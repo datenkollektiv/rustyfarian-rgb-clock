@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # doctor.sh — report development tooling status for rustyfarian-rgb-clock
-# Usage: scripts/doctor.sh (no arguments)
+# Usage: scripts/doctor.sh [ramdisk_path] [idf_target_dir]
 #
 # rgb-clock targets ESP32-C6/C3 (RISC-V) via ESP-IDF and a pinned nightly
-# toolchain — no espup/Xtensa fork and no RAM disk are involved.
+# toolchain — no espup/Xtensa fork needed. An optional macOS RAM disk can host
+# the cargo target-dir (see `just ramdisk`).
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=./lib.sh
+. "$SCRIPT_DIR/lib.sh"
+
+# Optional args supplied by the justfile: RAM disk mount path and resolved target dir.
+ramdisk="${1:-/Volumes/RustBuilds}"
+idf_dir="${2:-target}"
 
 # Pinned toolchain from rust-toolchain.toml (fallback if the file is missing).
 pinned="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$ROOT_DIR/rust-toolchain.toml" 2>/dev/null)"
@@ -86,4 +93,34 @@ if [ -f "$ROOT_DIR/.env" ]; then
     status ".env" "ok" "optional non-secret portal prefill values present"
 else
     status ".env" "ok" "not present — optional; portal defaults to 1883/rgb-clock, rest typed in the portal"
+fi
+
+# --- Build acceleration (optional) ----------------------------------------
+# Shared ESP-IDF tools/SDK install — kept out of per-project target dirs (and off
+# the RAM disk). Populated on the first ESP-IDF build.
+if [ -d "$HOME/.espressif" ]; then
+    status "esp-idf tools" "ok" "~/.espressif (shared install; used when the RAM disk is mounted)"
+else
+    status "esp-idf tools" "--" "~/.espressif (populated on the first firmware build)"
+fi
+
+# macOS RAM disk hosting the cargo target-dir (optional; `just ramdisk attach`).
+# Uses the shared is_ramdisk_mounted() helper so the check matches the justfile and
+# ramdisk.sh exactly (it returns false on non-macOS, where diskutil is absent).
+if is_ramdisk_mounted "$ramdisk"; then
+    sz=$(df -g "$ramdisk" 2>/dev/null | awk 'NR==2 {print $2}')
+    status "ramdisk" "ok" "$ramdisk (~${sz:-?} GB)  →  target-dir: $idf_dir"
+else
+    status "ramdisk" "off" "optional — run: just ramdisk attach (spares the SSD); target-dir: $idf_dir"
+fi
+
+# sccache compiler cache (optional; needs RUSTC_WRAPPER=sccache to take effect).
+if command -v sccache >/dev/null 2>&1; then
+    if [ "${RUSTC_WRAPPER:-}" = "sccache" ]; then
+        status "sccache" "ok" "$(sccache --version 2>/dev/null)"
+    else
+        status "sccache" "--" "installed but RUSTC_WRAPPER not set to sccache"
+    fi
+else
+    status "sccache" "optional" "run: brew install sccache (speeds up cold builds)"
 fi
