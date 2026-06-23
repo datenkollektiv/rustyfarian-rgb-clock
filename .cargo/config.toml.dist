@@ -24,3 +24,14 @@ build-std = ["std", "panic_abort"]
 MCU = "esp32c6"
 # Note: this variable is not used by the pio builder (`cargo build --features pio`)
 ESP_IDF_VERSION = "v5.3.3"
+# ESP-IDF tools install location. "workspace" (per-project .embuild) is the default
+# used by CI and by non-RAM-disk builds. Keeping "global" OUT of this committed file
+# is deliberate: CI copies this file and installs globally would break esp-idf-sys's
+# tool discovery (ninja/compilers). The justfile overrides this to "global"
+# (~/.espressif) ONLY when the macOS RAM disk is mounted, so the heavy tools don't
+# land on the RAM disk and are shared across rustyfarian projects. See the justfile.
+ESP_IDF_TOOLS_INSTALL_DIR = "workspace"
+# embuild (esp-idf-sys) derives the project root from the parent of target-dir,
+# which breaks sdkconfig.defaults discovery when target-dir points outside the
+# workspace (e.g. the RAM disk). Setting this explicitly keeps it found.
+ESP_IDF_SDKCONFIG_DEFAULTS = { value = "sdkconfig.defaults", relative = true }
