@@ -83,7 +83,7 @@ else
 fi
 
 if [ -f "$ROOT_DIR/.env" ]; then
-    status ".env" "ok" "Wi-Fi/MQTT credentials present (required to build firmware)"
+    status ".env" "ok" "optional non-secret portal prefill values present"
 else
-    status ".env" "MISSING" "copy .env.example to .env and fill in Wi-Fi/MQTT values"
+    status ".env" "ok" "not present — optional; portal defaults to 1883/rgb-clock, rest typed in the portal"
 fi

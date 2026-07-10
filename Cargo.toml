@@ -33,11 +33,12 @@ ferriswheel = "0.6.0"
 rustyfarian-esp-idf-ws2812 = "0.6.0"
 
 # External crate from rustyfarian-network. PRE-RELEASE git pin: the published
-# crates.io 0.4.0 predates the `WifiMqttBoot` / `run_wifi_mqtt_portal` boot API we
-# now consume (see docs/features/wifi-softap-provisioning-v1.md). Pinned to the
-# commit that adds it; flip back to a crates.io `version = "..."` once that lands
-# in a release. `default = []`, so an explicit feature list is required.
-rustyfarian-esp-idf-network = { git = "https://github.com/datenkollektiv/rustyfarian-network", rev = "c0aabac99a621dc37b4a9000803dddca8f46a241", default-features = false, features = ["wifi", "mqtt", "provisioning"] }
+# crates.io 0.4.0 predates the `WifiMqttBoot` / `run_wifi_mqtt_portal` boot API and
+# the `PortalConfig::defaults` (`PortalDefaults`) form pre-fill we now consume (see
+# docs/features/wifi-softap-provisioning-v1.md). Pinned to the commit that carries
+# both; flip back to a crates.io `version = "..."` once that lands in a release.
+# `default = []`, so an explicit feature list is required.
+rustyfarian-esp-idf-network = { git = "https://github.com/datenkollektiv/rustyfarian-network", rev = "8fc9f5f9575ddc0416e487cf43fa09ce9af33809", default-features = false, features = ["wifi", "mqtt", "provisioning"] }
 
 [package]
 name = "rustyfarian-rgb-clock"

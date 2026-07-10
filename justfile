@@ -4,6 +4,12 @@
 # .cargo/config.toml, so recipes that touch platform-independent crates
 # explicitly pass --target to override it.
 
+# Load the optional `.env` so its non-secret portal-prefill values (WIFI_SSID,
+# MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_CLIENT_ID) reach the `cargo` build behind
+# these recipes. A missing `.env` is a no-op — the build falls back to the
+# hardcoded defaults. See `.env.example`.
+set dotenv-load := true
+
 host_target := `scripts/host-target.sh`
 esp_target  := "riscv32imac-esp-espidf"
 

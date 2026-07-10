@@ -10,8 +10,8 @@ use esp_idf_svc::mqtt::client::QoS;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use rustyfarian_esp_idf_network::mqtt::MqttBuilder;
 use rustyfarian_esp_idf_network::provisioning::{
-    run_wifi_mqtt_portal, BootConfig, PortalConfig, PortalOutcome, ProvisioningEvent,
-    ProvisioningStore, SchemaProfile, WifiMqttBoot, WifiMqttLoadOutcome,
+    run_wifi_mqtt_portal, BootConfig, PortalConfig, PortalDefaults, PortalOutcome,
+    ProvisioningEvent, ProvisioningStore, SchemaProfile, WifiMqttBoot, WifiMqttLoadOutcome,
 };
 use rustyfarian_esp_idf_network::wifi::WiFiManager;
 use rustyfarian_esp_idf_ws2812::Ws2812Rmt;
@@ -19,6 +19,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 const MQTT_TOPIC: &str = "tick";
+
+/// SoftAP SSID prefix; the network crate appends the AP MAC's last two bytes as
+/// `Rustyfarian-XXXX`. Also documented in `docs/features/wifi-softap-provisioning-v1.md`.
+const AP_SSID_PREFIX: &str = "Rustyfarian";
+/// Device name shown on the portal `/status` page. Doubles as the MQTT client-id
+/// prefill fallback (the client-id defaults to the device name when unset).
+const DEVICE_NAME: &str = "rgb-clock";
+/// MQTT broker port prefilled in the portal form when `MQTT_PORT` is not supplied
+/// at build time. The IANA-assigned plaintext-MQTT port.
+const DEFAULT_MQTT_PORT: &str = "1883";
 
 fn main() -> anyhow::Result<()> {
     // It is necessary to call this function once. Otherwise, some patches to the runtime
@@ -208,12 +218,37 @@ fn run_provisioning(
     // setup. See the "Security stance" section of the feature doc.
     let boot_config = BootConfig {
         portal: PortalConfig {
-            ssid_prefix: "Rustyfarian",
+            ssid_prefix: AP_SSID_PREFIX,
+            // Keep the per-device MAC-derived `Rustyfarian-XXXX` SSID (no override).
+            ssid_override: None,
             ap_password: None,
             channel: 1,
-            device_name: "rgb-clock",
+            device_name: DEVICE_NAME,
             firmware_version: env!("CARGO_PKG_VERSION"),
             profile: SchemaProfile::WifiMqttDevice,
+            // Non-secret prefill so a fresh device shows sensible values instead of
+            // empty fields. Universally-sane fallbacks apply out of the box;
+            // deployment-specific fields come from an optional `.env` at build time
+            // (see `.env.example`). Secrets (`wifi_pass`, `mqtt_pass`) are never
+            // included — the API redacts them and re-prompts on submit.
+            //
+            // Note: upstream renders the `mqtt_host:port` prefill only when the host
+            // is non-empty, so `mqtt_port` surfaces in the form only alongside a set
+            // `MQTT_HOST` (see `PortalDefaults` / `compose_mqtt_uri` upstream). A
+            // typo'd `MQTT_PORT` is caught at build time in `build.rs`.
+            defaults: PortalDefaults {
+                wifi_ssid: option_env!("WIFI_SSID").unwrap_or(""),
+                mqtt_host: option_env!("MQTT_HOST").unwrap_or(""),
+                // Trim + empty-fallback to agree exactly with the `build.rs` guard,
+                // so a padded `MQTT_PORT` can't slip a whitespace-y port into the form.
+                mqtt_port: option_env!("MQTT_PORT")
+                    .map(str::trim)
+                    .filter(|p| !p.is_empty())
+                    .unwrap_or(DEFAULT_MQTT_PORT),
+                mqtt_user: option_env!("MQTT_USER").unwrap_or(""),
+                mqtt_client: option_env!("MQTT_CLIENT_ID").unwrap_or(DEVICE_NAME),
+                ..PortalDefaults::default()
+            },
         },
         // First boot has no deadline — block until the user provisions.
         portal_timeout: None,

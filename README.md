@@ -80,7 +80,8 @@ Run all pre-commit checks (format, check, clippy, test)
 just verify
 ```
 
-Wi-Fi and MQTT credentials are provisioned at runtime via a SoftAP captive portal — no `.env` is needed.
+Wi-Fi and MQTT credentials are provisioned at runtime via a SoftAP captive portal — no credentials live in the firmware image.
+A `.env` is optional: it only supplies **non-secret** defaults that pre-fill the portal form (see `.env.example`); passwords are never set there.
 On first boot (or after `just erase-flash`) the clock ring pulses amber and the device hosts an open `Rustyfarian-XXXX` access point; connect to it, open the captive portal, and submit your Wi-Fi + MQTT details.
 See [docs/features/wifi-softap-provisioning-v1.md](docs/features/wifi-softap-provisioning-v1.md) for details.
 Run `just setup-cargo-config` to create `.cargo/config.toml` from the template.
