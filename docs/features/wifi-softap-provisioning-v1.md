@@ -147,12 +147,14 @@ Benign log noise observed (not firmware bugs): `OWE`/`i2c old driver` ESP-IDF wa
 
 ## Pre-release consumption — git pin (flip back on release)
 
-The network crate's `WifiMqttBoot` / `run_wifi_mqtt_portal` API (commit
-`c0aabac`, branch `provision-or-load`) is not on crates.io yet, so we consume it
-via a git pin — the same pre-release pattern used before the 0.4.0 release.
+The network crate's `WifiMqttBoot` / `run_wifi_mqtt_portal` API **and** the
+`PortalConfig::defaults` (`PortalDefaults`) form pre-fill are not on crates.io yet, so we
+consume them via a git pin — the same pre-release pattern used before the 0.4.0 release.
+The pin currently tracks rev `8fc9f5f` (bumped from the original `c0aabac`, which predated
+`PortalDefaults`/`ssid_override`).
 **When the network team publishes it (e.g. 0.5.0), revert all three:**
 
-1. `Cargo.toml` — `rustyfarian-esp-idf-network = { git = "…", rev = "c0aabac…" }`
+1. `Cargo.toml` — `rustyfarian-esp-idf-network = { git = "…", rev = "8fc9f5f…" }`
    → `{ version = "0.5.0", default-features = false, features = ["wifi", "mqtt", "provisioning"] }`.
 2. `.cargo/config.toml` (local dev, gitignored) — move the `rustyfarian-esp-idf-network`
    patch from `[patch."https://github.com/datenkollektiv/rustyfarian-network"]` back under
@@ -197,3 +199,11 @@ the crate straight from the pushed git rev.
 - 2026-06-23 — **Hardware-validated end-to-end on ESP32-C3**: provision → commit → restart → STA →
   MQTT → fresh ticks rendering. NVS prerequisite confirmed. Earlier portal page-load issue did not recur.
   Only benign teardown/framework log noise observed (OWE/i2c warnings, shutdown-time 404s + setsockopt).
+- 2026-07-10 — Adopted the latest network API (pin `c0aabac` → `8fc9f5f`) and populated the new
+  `PortalConfig::defaults` (`PortalDefaults`) form pre-fill. **Hybrid** default sourcing: hardcoded
+  universally sane fallbacks (`mqtt_port` `1883`, `mqtt_client` `rgb-clock`) plus optional non-secret
+  `.env` prefill for `WIFI_SSID`/`MQTT_HOST`/`MQTT_USER` (and overrides for the two hardcoded ones) via
+  `option_env!`. Secrets are never pre-filled. `.env` reintroduced as **optional, non-secret** only:
+  `set dotenv-load := true` in the justfile feeds the vars to the build, `build.rs` gets
+  `rerun-if-env-changed` hints, and `.env.example` + `doctor.sh` were updated. `ssid_override` left
+  `None` (per-device SSID kept).
