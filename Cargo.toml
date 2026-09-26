@@ -32,16 +32,14 @@ clock-pure = { path = "crates/clock-pure" }
 ferriswheel = "0.7.0"
 rustyfarian-esp-idf-ws2812 = "0.7.0"
 
-# External crate from rustyfarian-network. PRE-RELEASE git pin: the published
-# crates.io 0.4.0 predates the `WifiMqttBoot` / `run_wifi_mqtt_portal` boot API and
-# the `PortalConfig::defaults` (`PortalDefaults`) form pre-fill we now consume (see
-# docs/features/wifi-softap-provisioning-v1.md). Pinned to the commit that carries
-# both; flip back to a crates.io `version = "..."` once that lands in a release.
-# fcf536d is the tip of network's `september-2026-maintenance` branch (esp-idf-hal
-# 0.47 / esp-idf-svc 0.53 / pennant 0.7 wave), not yet on main — re-pin to the
-# merge commit once that branch lands, in case it is squash-merged and deleted.
-# `default = []`, so an explicit feature list is required.
-rustyfarian-esp-idf-network = { git = "https://github.com/datenkollektiv/rustyfarian-network", rev = "fcf536d834e908b8571e82939d2a331cd46862ae", default-features = false, features = ["wifi", "mqtt", "provisioning"] }
+# External crate from rustyfarian-network — published to crates.io at 0.5.0, which
+# carries the esp-idf-hal 0.47 / esp-idf-svc 0.53 / pennant 0.7 wave, the
+# `WifiMqttBoot` / `run_wifi_mqtt_portal` boot API, the `PortalDefaults` form
+# pre-fill, and the optional `ota_url` for `WifiMqttDevice` this firmware relies on
+# (ADR 014 amendment — the previous git pin still required it).
+# `default = []`, so an explicit feature list is required; `ota` adds `OtaSession`
+# plus the `juggler::ota` re-exports (`decide_update`, `ImageMetadata`, `Version`).
+rustyfarian-esp-idf-network = { version = "0.5", default-features = false, features = ["wifi", "mqtt", "provisioning", "ota"] }
 
 [package]
 name = "rustyfarian-rgb-clock"
