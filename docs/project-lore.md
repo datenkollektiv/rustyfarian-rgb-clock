@@ -15,6 +15,14 @@ Affected versions: `esp-idf-svc 0.52+`.
 Fix: register subscriptions with `MqttBuilder::subscribe()`; the network crate spawns a dedicated subscriber thread after `on_connect` returns and repeats that on reconnect.
 Do not add firmware-local watcher threads unless a future network crate regression removes this behavior.
 
+**The provisioning portal rejects `POST /save` ("N field error(s)") unless the OTA URL and device name are filled, and a fresh device prefills neither.**
+`parse_form` requires `ota_url` (must start with `http://`) and `dev_name`, but the firmware sets no `PortalDefaults::ota_url` and the IDF tier's `Prefill::from_defaults` never falls back to `PortalConfig::device_name` (upstream gap at network `fcf536d`, see `docs/outbox/rustyfarian-network-portal-device-name-prefill.md`).
+The broker URL prefills only when `MQTT_HOST` is set, and `.env` values are baked in at build time via `option_env!`, so a commented-out `.env` silently yields an empty form.
+A rejected submit re-renders the form completely empty (`Prefill::empty()`), so every field must be retyped.
+Fix: set `WIFI_SSID` and `MQTT_HOST` (plain hostname, no scheme or port) in `.env` and rebuild; the device name still needs the upstream fallback fix.
+The OTA half is resolved upstream after `fcf536d` — `ota_url` is optional for `WifiMqttDevice` (ADR 014 amendment) and an empty value stores `""`, so the firmware's `http://ota.invalid/` placeholder is gone.
+Deleting that placeholder while pinned at or before `fcf536d` reintroduces the rejection, and a local `[patch]` to the sibling tree hides it.
+
 ---
 
 ## Toolchain & Dependencies
@@ -33,6 +41,16 @@ If the key is wrong, Cargo silently uses the published crates.io version instead
 `Cargo.lock` records feature-gated-off optional deps, and cargo-deny checks the full lockfile.
 Fix: add a justified `[advisories] ignore` entry in `deny.toml` (note the chain + that it is never built), rather than chasing a non-existent compiled dependency.
 Related: after migrating off git deps, empty `[sources] allow-git` — stale entries emit `unmatched-source` warnings since crates.io/local-path sources never match them.
+
+**`rustyfarian-esp-idf-ws2812 0.7.0` declares `rust-version = "1.95"`, so the ws2812 0.7 wave fails with `requires rustc 1.95 or newer` on the older nightly pin — and staying on 0.6 instead fails the `pennant 0.7` trait bound once network moves.**
+The ws2812 crates, `esp-idf-hal 0.47` / `esp-idf-svc 0.53`, the network pin, and the nightly must move as one wave (September 2026: `nightly-2025-12-01` → `nightly-2026-01-26`, which reports `1.95.0-nightly` and satisfies `1.95`).
+The nightly is pinned in two places — `rust-toolchain.toml` and `.github/workflows/rust.yml` — and both must change together.
+A locally installed rolling `nightly` of the right date is not the dated toolchain: rustup leaves a broken stub and every `rustc` call (including the justfile's `scripts/host-target.sh` backtick) fails with `missing manifest in toolchain`; run `rustup toolchain install nightly-YYYY-MM-DD` explicitly.
+Verify the wave without the local `[patch]` redirects too (comment them out, rebuild, restore) — local builds otherwise test the sibling working trees, not the published crates and git rev CI uses.
+
+**The macOS RAM disk at `/Volumes/RustBuilds` is shared by every rustyfarian project, so another repo's ESP-IDF target (several GiB each) can fill it and fail this build with `No space left on device (os error 28)`.**
+The error surfaces as unrelated `could not compile core`/linker failures, and a toolchain bump rebuilds everything, so it usually hits during upgrades.
+Check with `df -h /Volumes/RustBuilds` and `du -sh /Volumes/RustBuilds/targets/*/*`; build on disk meanwhile with `just --set idf_dir target <recipe>`, or remount a bigger RAM disk (24 GiB fits the full rgb-clock build with room to spare).
 
 ---
 

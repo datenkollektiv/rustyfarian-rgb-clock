@@ -16,3 +16,5 @@ archive
 /target
 /Cargo.lock
 .cargo/config.toml
+tmp/
+audit/
