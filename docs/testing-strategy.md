@@ -147,7 +147,7 @@ jobs:
     name: "Wokwi: Firmware Simulation"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install ESP-RS toolchain
         uses: esp-rs/xtensa-toolchain@v1.5
@@ -166,7 +166,7 @@ jobs:
           scenario: wokwi/test-startup.yaml
 
       - name: Upload screenshots
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: wokwi-screenshots
@@ -263,7 +263,7 @@ jobs:
     runs-on: [self-hosted, rpi, esp32]
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Check device availability
         run: probe-rs list

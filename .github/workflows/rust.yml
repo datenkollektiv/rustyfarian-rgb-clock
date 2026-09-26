@@ -28,13 +28,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Setup just
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@v4
 
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install ldproxy and espflash
         run: |
@@ -61,12 +61,12 @@ jobs:
 
       - name: Install pinned nightly toolchain
         run: |
-          rustup toolchain install nightly-2025-12-01
-          rustup component add rust-src clippy --toolchain nightly-2025-12-01
-          rustup default nightly-2025-12-01
+          rustup toolchain install nightly-2026-01-26
+          rustup component add rust-src clippy --toolchain nightly-2026-01-26
+          rustup default nightly-2026-01-26
 
       - name: Setup just
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@v4
 
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
@@ -96,7 +96,7 @@ jobs:
             target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock.bin
 
       - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: firmware
           path: |
@@ -113,10 +113,10 @@ jobs:
     needs: build
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download firmware artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: firmware
           path: target/riscv32imac-esp-espidf/release/
@@ -148,7 +148,7 @@ jobs:
         id: wokwi-frames
 
       - name: Upload screenshots
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: wokwi-screenshots

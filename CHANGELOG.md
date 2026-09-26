@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+- Adopted the September 2026 rustyfarian release wave: `rustyfarian-esp-idf-ws2812` and `ferriswheel` `0.6.0` → `0.7.0` (`pennant 0.7`), `esp-idf-hal` `0.46` → `0.47`, `esp-idf-svc` `0.52` → `0.53` (resolves `esp-idf-sys 0.38.1`), and the pre-release `rustyfarian-esp-idf-network` git pin `8fc9f5f` → `fcf536d`.
+  No firmware source changes were needed.
+- Pinned nightly `nightly-2025-12-01` → `nightly-2026-01-26` (`1.95.0-nightly`) and `rust-version` `1.77` → `1.95`, required by `rustyfarian-esp-idf-ws2812 0.7`.
+- CI: `actions/checkout` `v4` → `v5`, `extractions/setup-just` `v2` → `v4`, `actions/upload-artifact` `v4` → `v7`, and `actions/download-artifact` `v4` → `v8` (Node 20 was removed from GitHub runners).
+
+### Fixed
+- Provisioning portal prefills the required OTA URL with the placeholder `http://ota.invalid/` on a fresh device, so a submission no longer fails on it; the firmware implements no OTA and never uses the value.
+
+### Security
+- Fresh dependency resolution clears RUSTSEC-2026-0204 (`crossbeam-epoch` 0.9.18 → 0.9.21, via `embuild` 0.33.5) and the unsound-advisory warnings on `anyhow` (1.0.104) and `rand` (0.9.5).
+
 ## [0.2.0] - 2026-05-12
 
 ### Added

@@ -150,11 +150,12 @@ Benign log noise observed (not firmware bugs): `OWE`/`i2c old driver` ESP-IDF wa
 The network crate's `WifiMqttBoot` / `run_wifi_mqtt_portal` API **and** the
 `PortalConfig::defaults` (`PortalDefaults`) form pre-fill are not on crates.io yet, so we
 consume them via a git pin — the same pre-release pattern used before the 0.4.0 release.
-The pin currently tracks rev `8fc9f5f` (bumped from the original `c0aabac`, which predated
-`PortalDefaults`/`ssid_override`).
+The pin currently tracks rev `fcf536d` — the tip of network's `september-2026-maintenance`
+branch (`esp-idf-hal 0.47` / `pennant 0.7` wave), not yet on network `main`; re-pin to the merge
+commit once it lands. History: `c0aabac` (predated `PortalDefaults`/`ssid_override`) → `8fc9f5f` → `fcf536d`.
 **When the network team publishes it (e.g. 0.5.0), revert all three:**
 
-1. `Cargo.toml` — `rustyfarian-esp-idf-network = { git = "…", rev = "8fc9f5f…" }`
+1. `Cargo.toml` — `rustyfarian-esp-idf-network = { git = "…", rev = "fcf536d…" }`
    → `{ version = "0.5.0", default-features = false, features = ["wifi", "mqtt", "provisioning"] }`.
 2. `.cargo/config.toml` (local dev, gitignored) — move the `rustyfarian-esp-idf-network`
    patch from `[patch."https://github.com/datenkollektiv/rustyfarian-network"]` back under
@@ -171,6 +172,13 @@ the crate straight from the pushed git rev.
   `wokwi/test-*.yaml` scenarios exercise provisioning-mode boot, not the clock face. CI does not hard-fail
   (the Wokwi job is `continue-on-error` and only flags panics), but the scenarios are now semantically
   stale. Reworking them to drive the portal (a client POSTing the form) is the "later decision" above.
+- **OTA URL placeholder:** resolved. `ota_url` is now optional for `WifiMqttDevice` upstream (ADR 014
+  amendment — an absent or empty value stores `""`, meaning "no OTA configured"), so the
+  `http://ota.invalid/` prefill and its `OTA_URL_PLACEHOLDER` constant are gone from `src/main.rs`.
+  The field is left unprefilled until the OTA feature gives it a real value.
+  Requires a network rev carrying the amendment; it is **not** in `fcf536d`.
+- **Device-name prefill:** a fresh device renders the required device-name field empty (upstream gap,
+  see `docs/outbox/rustyfarian-network-portal-device-name-prefill.md`); re-pin once fixed.
 - BOOT/GPIO9 re-provision trigger; WPA2 AP; pulse tuning; AP-name configurability.
 - **Boilerplate reduction:** ~105 of the ~150 firmware boot lines are generic glue copied from the
   network crate's own example. An upstream feature request has been filed to push it into the library
