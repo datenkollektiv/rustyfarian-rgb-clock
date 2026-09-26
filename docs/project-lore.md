@@ -54,6 +54,29 @@ Check with `df -h /Volumes/RustBuilds` and `du -sh /Volumes/RustBuilds/targets/*
 
 ---
 
+## OTA & Firmware Update
+
+**A truncated or corrupted firmware image does not exercise bootloader rollback — it never reaches the bootloader.**
+`OtaSession::fetch_and_apply` compares the streamed SHA-256 against the expected digest *before* calling `complete()`, which is the call that sets the boot partition.
+A digest mismatch aborts the write and leaves the boot slot unchanged, so the device keeps running the old image and no rollback occurs.
+Rollback fires only when a well-formed, correctly-hashed image is activated and then fails to call `esp_ota_mark_app_valid_cancel_rollback()` before the next reboot, moving the slot from `PENDING_VERIFY` to `INVALID`.
+Fix: to demonstrate rollback, build a valid image that deliberately skips `mark_valid` and reboots; use the truncated image to demonstrate verify-before-swap instead.
+
+**A cached bootloader silently disables rollback while every log line still looks healthy.**
+`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y` in `sdkconfig.defaults` only takes effect once the bootloader is rebuilt, and `mark_valid()` returns success against a rollback-disabled bootloader.
+Fix: run `just clean-idf` after changing `sdkconfig.defaults`, and treat a passing `mark_valid()` as no evidence that rollback is armed.
+
+**`espflash` writes its own bundled ESP-IDF v5.5.1 bootloader unless `--bootloader` is passed, so no `sdkconfig` bootloader setting in this repo currently reaches the device.**
+`scripts/flash.sh` does not pass `--bootloader`, so the bootloader on the chip is never the one `esp-idf-sys` builds from `sdkconfig.defaults`, and it uses a 32 KB MMU page size against the v5.3.3 app's 64 KB.
+Any bootloader-level feature — rollback above all — is therefore inert while the build logs look correct.
+Fix: pass `--bootloader target/<target>/release/build/esp-idf-sys-*/out/build/bootloader/bootloader.bin` plus `--ignore-app-descriptor`, mirroring the implementation already in `rustyfarian-network`'s `scripts/flash.sh`.
+
+**App partition offsets must be 64 KiB aligned; 4 KiB alignment is only enough for data partitions.**
+`gen_esp32part.py` rejects a misaligned `app` partition, and the v5.3.3 bootloader maps flash in 64 KiB MMU pages.
+Fix: start the first app slot at the next `0x10000` boundary and accept the padding, rather than packing app partitions tightly behind `otadata`/`phy_init`.
+
+---
+
 ## Clock Display
 
 **At `DEFAULT_BRIGHTNESS = 10`, the cyan blend from overlapping hour and minute hands is visually indistinguishable from blue.**
