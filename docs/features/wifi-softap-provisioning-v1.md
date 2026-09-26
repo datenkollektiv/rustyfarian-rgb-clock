@@ -176,9 +176,10 @@ the crate straight from the pushed git rev.
   amendment — an absent or empty value stores `""`, meaning "no OTA configured"), so the
   `http://ota.invalid/` prefill and its `OTA_URL_PLACEHOLDER` constant are gone from `src/main.rs`.
   The field is left unprefilled until the OTA feature gives it a real value.
-  Requires a network rev carrying the amendment; it is **not** in `fcf536d`.
-- **Device-name prefill:** a fresh device renders the required device-name field empty (upstream gap,
-  see `docs/outbox/rustyfarian-network-portal-device-name-prefill.md`); re-pin once fixed.
+  Shipped in network `0.5.0`, which this firmware now depends on from crates.io.
+- **Device-name prefill:** resolved in network `0.5.0`. `Prefill::from_defaults` now takes the
+  configured `device_name` and sets `dev_name`, and a rejected `POST /save` re-renders through
+  `load_prefill` instead of an empty form — so a single bad field no longer means retyping everything.
 - BOOT/GPIO9 re-provision trigger; WPA2 AP; pulse tuning; AP-name configurability.
 - **Boilerplate reduction:** ~105 of the ~150 firmware boot lines are generic glue copied from the
   network crate's own example. An upstream feature request has been filed to push it into the library

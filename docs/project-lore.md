@@ -15,13 +15,11 @@ Affected versions: `esp-idf-svc 0.52+`.
 Fix: register subscriptions with `MqttBuilder::subscribe()`; the network crate spawns a dedicated subscriber thread after `on_connect` returns and repeats that on reconnect.
 Do not add firmware-local watcher threads unless a future network crate regression removes this behavior.
 
-**The provisioning portal rejects `POST /save` ("N field error(s)") unless the OTA URL and device name are filled, and a fresh device prefills neither.**
-`parse_form` requires `ota_url` (must start with `http://`) and `dev_name`, but the firmware sets no `PortalDefaults::ota_url` and the IDF tier's `Prefill::from_defaults` never falls back to `PortalConfig::device_name` (upstream gap at network `fcf536d`, see `docs/outbox/rustyfarian-network-portal-device-name-prefill.md`).
-The broker URL prefills only when `MQTT_HOST` is set, and `.env` values are baked in at build time via `option_env!`, so a commented-out `.env` silently yields an empty form.
-A rejected submit re-renders the form completely empty (`Prefill::empty()`), so every field must be retyped.
-Fix: set `WIFI_SSID` and `MQTT_HOST` (plain hostname, no scheme or port) in `.env` and rebuild; the device name still needs the upstream fallback fix.
-The OTA half is resolved upstream after `fcf536d` — `ota_url` is optional for `WifiMqttDevice` (ADR 014 amendment) and an empty value stores `""`, so the firmware's `http://ota.invalid/` placeholder is gone.
-Deleting that placeholder while pinned at or before `fcf536d` reintroduces the rejection, and a local `[patch]` to the sibling tree hides it.
+**Portal form prefills are baked in at build time via `option_env!`, so a commented-out `.env` silently yields an empty form.**
+The broker URL prefills only when `MQTT_HOST` is set, and editing `.env` without a rebuild changes nothing.
+Fix: set `WIFI_SSID` and `MQTT_HOST` (plain hostname, no scheme or port) in `.env` and rebuild.
+Historical: network `0.5.0` made `ota_url` optional for `WifiMqttDevice` (ADR 014 amendment), prefilled `dev_name` from the configured `device_name`, and re-rendered a rejected `POST /save` through `load_prefill` instead of an empty form.
+Before that, empty OTA-URL and device-name fields made every submission fail with "N field error(s)" and wiped the whole form on each retry.
 
 ---
 

@@ -189,7 +189,7 @@ Documentation:
 
 - A local ADR recording the ADR 011 §3 amendment (demo hosted here) together with the 1.5 MiB slot and `phy_init` deviations
 - `docs/ota-security-model.md` — threat model, why SHA-256 over plain HTTP is the MVP's limit, rollback policy, and the reserved `sig` field
-- An outbox request to `rustyfarian-network` covering the `juggler` decision API, the missing `Content-Length` versus partition-capacity guard in the IDF downloader, and its read timeouts collapsing into `ServerUnreachable`.
+- ~~An outbox request to `rustyfarian-network`~~ — **delivered in network `0.5.0`**, so no request is outstanding.
   The decision API is one `core`-only function in a new `juggler::ota::decision` module: `decide_update(running: Version, offered: Version) -> UpdateDecision`, where `UpdateDecision` is `Apply` / `Skip` / `Reject` for strictly-newer, equal and older respectively.
   No new error variant is needed, because both inputs are already-parsed `Version`s and `Version::parse` already reports malformed input.
   `OtaState` deliberately gains no `Display` or serde implementation upstream; the status-string mapping stays a small match in this firmware so the library stays policy-free
