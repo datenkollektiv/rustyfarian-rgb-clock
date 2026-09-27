@@ -78,7 +78,7 @@ elf = "target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock"
     }
   ],
   "connections": [
-    ["esp:10", "ring1:DIN", "green", ["h0"]],
+    ["esp:18", "ring1:DIN", "green", ["h0"]],
     ["esp:GND.1", "ring1:GND", "black", ["h0"]],
     ["esp:3V3", "ring1:VCC", "red", ["h0"]]
   ],
@@ -86,7 +86,7 @@ elf = "target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock"
 }
 ```
 
-Note: Connection uses GPIO10 (the clock's NeoPixel pin from main.rs).
+Note: Connection uses GPIO18 (the clock's NeoPixel pin on the ESP32-C6 from main.rs).
 
 #### 2.2 Test Scenarios
 

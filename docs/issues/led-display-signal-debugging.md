@@ -10,7 +10,8 @@ _Status: open. Last updated during a debugging session; continue from "Open ques
 
 ## Hardware setup
 
-- ESP32-C6, firmware in this repo. 12 WS2812 NeoPixels on a ring, DIN on **GPIO 10**.
+- ESP32-C6, firmware in this repo. 12 WS2812 NeoPixels on a ring, DIN on the rustyfarian standard data pin per chip: **GPIO 18** on the ESP32-C6, **GPIO 4** on the ESP32-C3.
+- Historical setup: firmware before the 2026-09-27 pin change drove DIN on **GPIO 10** on both chips; the observations below were made with that wiring.
 - The LED strip is powered from the **ESP32 5 V pin**; DIN is driven directly by the 3.3 V GPIO.
 - Onboard status LED on GPIO 8 (separate `Ws2812Rmt`).
 - `DEFAULT_BRIGHTNESS = 10` (`src/rgb_clock.rs`) — colors are very dim.
@@ -46,6 +47,19 @@ _Status: open. Last updated during a debugging session; continue from "Open ques
 4. **After a hardware change (this is the gap — confirm what was changed):** ghosting/instability
    **gone** ("stable"). New steady symptom instead: **standalone red vanished**, "duplicated blue
    and green," and **yellow appears where the red second-hand overlaps green**.
+
+5. **2026-09-27, ESP32-C3 on GPIO 4, WS2812 strip, same firmware branch as the C6** — ticks
+   verified clean on the broker (one publisher, `{"hour":21,"minute":24,"second":20}` every 5 s).
+   Rainbow rendered correctly, then the clock showed the green minute hand **twice, two LEDs
+   apart with an unlit LED between** (LED 3 real, LED 5 phantom); both turned yellow when the
+   red second-hand walked over them. The phantom vanished for exactly one 5 s tick whenever
+   the red sat two LEDs *before* the real green, reproducibly across a reset, and after a few
+   minutes the display settled into a correct, stable clock with no phantom.
+   → Answers question 2 below: literally two LEDs at once, offset by two positions, not
+   adjacent and not an R-byte loss; content-dependent and self-healing, which fits a marginal
+   data level / edge at the first LED (3.3 V DIN into a 5 V-powered strip) rather than firmware.
+   A phantom two pixels later is 48 bits, the same size as the RMT `memory_block_symbols`
+   refill chunk — coincidence or not, worth keeping in view if it recurs on a level-shifted rig.
 
 ## Open question (resume here)
 

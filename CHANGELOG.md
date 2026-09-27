@@ -27,9 +27,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Validated
 
+- 2026-09-27: the ring on ESP32-C6 GPIO 18 lit up on the pogo-pin test rig after flashing.
+  The same day a WS2812 strip on ESP32-C3 GPIO 4 (`just flash idf_c3_rgb_clock`, chip check `esp32c3` rev v0.4) showed the rainbow and then the clock with all three hands moving, so both chip arms are hardware-validated
 - 2026-09-27: the A/B OTA baseline and the September 2026 dependency wave ran on an ESP32-C6-DevKitC-1 for the first time — erase, flash with the IDF-built rollback bootloader, SoftAP re-provisioning, MQTT `tick` rendering, and two power cycles all booting `ota_0` at `0x20000`. Upstream had shipped the wave compile-verified only. One regression found: the main task overflowed its stack inside network `0.5.0`'s `wait_committed` right after the portal committed (see `docs/project-lore.md`); the subsequent reboot masked it. Fixed the same day by the 16384-byte main stack below and re-verified with a second erase, flash and provisioning cycle, which also exercised the new live chip check
 
 ### Changed
+- The WS2812 clock ring DIN moved from GPIO 10 to the rustyfarian standard WS2812 data pin per chip: ESP32-C3 GPIO 4, ESP32-C6 GPIO 18 (the wiring used by the `rustyfarian-ws2812` examples and the shared pogo-pin test rigs).
+  `src/main.rs` selects the pin via the `mcu` cfg from `build.rs`; the Wokwi diagram and docs follow.
+  There is no GPIO 10 fallback, so units wired to GPIO 10 need the data line moved
 - `scripts/flash-image.sh` (behind `just flash` and `just flash-baseline`) now requires exactly one serial port — the single USB device `scripts/detect-port.sh` finds, or `ESPFLASH_PORT` — and asks the attached chip what it is with `espflash board-info` before writing, refusing when it differs from the requested target. `--ignore-app-descriptor` had left that check to the operator
 - `scripts/preflight.sh` runs `check-partitions.sh` before building, so the normal `just flash` path validates the table in the script itself instead of relying on the `flash-baseline` recipe dependency; `check-image-size.sh` now requires exactly one `app/ota_0` and one `app/ota_1` row rather than any two OTA-like rows
 - `just bootloader-path` takes the chip target (`idf_c6_rgb_clock` default, `idf_c3_rgb_clock`) instead of always resolving the C6 bootloader

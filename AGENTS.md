@@ -14,7 +14,7 @@ Three layers with a strict hardware boundary:
 
 - **`crates/clock-pure/`** — `#![no_std]` pure Rust library. Provides `hour_to_index`, `minute_to_index`, `second_to_index`, `scale_color`, `add_colors`. Fully testable on the host without any embedded toolchain.
 - **`src/rgb_clock.rs`** — Firmware display layer. `RGBClock` wraps `WS2812RMT` and maps `LocalTime` to 12 LED positions using `clock-pure`. Startup rainbow animation via `ferriswheel` runs until the first MQTT tick arrives.
-- **`src/main.rs`** — Entry point. GPIO10 = 12-LED NeoPixel ring; GPIO8 = onboard status LED. Flow: Wi-Fi init → MQTT connect → subscribe-watcher thread → clock updates. Main thread parks after setup; MQTT callbacks do all work.
+- **`src/main.rs`** — Entry point. GPIO18 (C6) / GPIO4 (C3) = 12-LED NeoPixel ring; GPIO8 = onboard status LED. Flow: Wi-Fi init → MQTT connect → subscribe-watcher thread → clock updates. Main thread parks after setup; MQTT callbacks do all work.
 
 External crates (git dependencies, path-patched locally via `.cargo/config.toml`):
 - `rustyfarian-ws2812` → `ferriswheel` (rainbow effects), `rustyfarian-esp-idf-ws2812` (RMT driver)

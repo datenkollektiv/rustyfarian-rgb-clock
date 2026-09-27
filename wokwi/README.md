@@ -48,7 +48,7 @@ These are uploaded as GitHub Actions artifacts for inspection.
 
 The `diagram.json` defines:
 - ESP32-C6-DevKitC-1 board
-- 12-LED NeoPixel ring on GPIO10 (clock display)
+- 12-LED NeoPixel ring on GPIO18 (clock display)
 - Status LED on GPIO8 (onboard RGB LED position)
 
 This matches the physical hardware configuration.
