@@ -8,7 +8,13 @@ set -euo pipefail
 #
 # To add a new chip, extend the case statement below.
 
-example="${1:?Usage: chip-env.sh <idf_{chip}_{name}>  e.g. idf_c6_rgb_clock}"
+# Not `${1:?...}`: a `}` inside the message (from `{chip}`) closes the parameter
+# expansion early, so the usage text leaks into the variable's value.
+example="${1:-}"
+if [ -z "$example" ]; then
+    printf 'Usage: %s <idf_{chip}_{name}>  e.g. idf_c6_rgb_clock\n' "$0" >&2
+    exit 2
+fi
 chip=$(printf '%s' "$example" | cut -d_ -f2)
 
 case "$chip" in

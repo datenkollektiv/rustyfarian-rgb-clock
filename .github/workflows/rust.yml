@@ -39,6 +39,20 @@ jobs:
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
 
+      # Guards the flash layout on every push: an app partition off a 64 KiB
+      # boundary, a wrong type/subtype pair, or a slot too small for the image is
+      # otherwise only discovered after erasing a device. Host-only, no toolchain.
+      - name: Validate partition table
+        run: just partition-check
+
+      - name: Partition-validator regression suite
+        run: just partition-check-tests
+
+      # Hardware-free tests of the flash script's guards: chip-mismatch refusal
+      # and a dry run that must never call espflash.
+      - name: Flash-script regression suite
+        run: just flash-image-tests
+
       # Host-side clock-pure clippy runs as its own fast gate in clippy.yml;
       # this job owns the unit tests to avoid duplicating that lint run.
       - name: Run clock-pure tests
@@ -86,6 +100,11 @@ jobs:
       - name: Clippy
         run: just clippy
 
+      # Measures the exact app image against both OTA slots, so firmware growth
+      # fails here rather than after a flash or an OTA push.
+      - name: Check the app image fits the OTA slots
+        run: just image-check
+
       - name: Generate firmware image for Wokwi
         run: |
           BOOTLOADER=$(ls -t target/riscv32imac-esp-espidf/release/build/esp-idf-sys-*/out/build/bootloader/bootloader.bin | head -1)
@@ -103,6 +122,46 @@ jobs:
             target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock
             target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock.bin
           retention-days: 1
+
+  # ===========================================================================
+  # Tier 1b: Build and image check for ESP32-C3 (compile-verified only; no
+  # Wokwi scenario). Catches target-specific breakage such as the per-chip pin
+  # cfg and proves the C3 image fits the shared OTA slots.
+  # ===========================================================================
+  build-c3:
+    name: Build & Image check (ESP32-C3)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install ldproxy and espflash
+        run: |
+          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+          cargo binstall -y ldproxy espflash
+
+      - name: Install pinned nightly toolchain
+        run: |
+          rustup toolchain install nightly-2026-01-26
+          rustup component add rust-src clippy --toolchain nightly-2026-01-26
+          rustup default nightly-2026-01-26
+
+      - name: Setup just
+        uses: extractions/setup-just@v4
+
+      - name: Enable caching
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: esp32c3
+
+      - name: Setup cargo config
+        run: cp .cargo/config.toml.dist .cargo/config.toml
+
+      - name: Build ESP32-C3
+        run: just build idf_c3_rgb_clock
+
+      - name: Check the C3 app image fits the OTA slots
+        run: just image-check idf_c3_rgb_clock
 
   # ===========================================================================
   # Tier 2: Wokwi Simulation

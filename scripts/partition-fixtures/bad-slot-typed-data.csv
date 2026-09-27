@@ -1,0 +1,4 @@
+nvs,      data, nvs,     0x9000,   0x6000,
+otadata,  data, ota,     0xf000,   0x2000,
+ota_0,    data, ota_0,   0x11000,  0x1000,
+ota_1,    data, ota_1,   0x12000,  0x1000,

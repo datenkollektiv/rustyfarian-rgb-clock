@@ -47,7 +47,7 @@ _default:
 
 # verify code quality without modifying files; suggests 'just pre-commit' on formatting issues
 [group("composite")]
-verify:
+verify: partition-check partition-check-tests flash-image-tests
     @cargo fmt --all -- --check || (printf '\nFormatting issues found — run `just pre-commit` to auto-fix.\n' >&2 && exit 1)
     cargo check
     cargo clippy -- -D warnings
@@ -55,11 +55,11 @@ verify:
 
 # full pre-commit verification: format, check, lint, test (modifies files — local use only)
 [group("composite")]
-pre-commit: fmt check clippy test
+pre-commit: fmt partition-check partition-check-tests flash-image-tests check clippy test
 
 # CI-equivalent verification (non-modifying): format check, deny, check, lint, test
 [group("composite")]
-ci: fmt-check deny check clippy test
+ci: fmt-check partition-check partition-check-tests flash-image-tests deny check clippy test
 
 # ── Build & Check ────────────────────────────────────────────────────────────
 
@@ -77,6 +77,26 @@ check example="idf_c6_rgb_clock":
     printf 'Checking %s (MCU=%s, target=%s)...\n' '{{example}}' "$MCU" "$TARGET"
     MCU="$MCU" cargo check --target "$TARGET"
 
+# validate partitions.csv against ESP-IDF alignment, capacity, and NVS-stability rules
+[group("build")]
+partition-check:
+    @scripts/check-partitions.sh
+
+# run the partition-validator regression suite (scripts/partition-fixtures)
+[group("build")]
+partition-check-tests:
+    @scripts/check-partitions-tests.sh
+
+# run the hardware-free regression suite for scripts/flash-image.sh (fake espflash; chip-mismatch and dry-run guards)
+[group("build")]
+flash-image-tests:
+    @scripts/flash-image-tests.sh
+
+# generate the real flashable app image for a chip target and check it fits both OTA slots (needs a prior `just build`)
+[group("build")]
+image-check example="idf_c6_rgb_clock":
+    scripts/check-image-size.sh "{{example}}"
+
 # ── Flash & Monitor ──────────────────────────────────────────────────────────
 
 # build and flash firmware; does not open the monitor — run `just monitor` after (e.g. idf_c6_rgb_clock, idf_c3_rgb_clock)
@@ -84,10 +104,58 @@ check example="idf_c6_rgb_clock":
 flash example="idf_c6_rgb_clock":
     scripts/flash.sh "{{example}}"
 
+# one-time first flash of the OTA layout: validate, full-erase, then flash
+# Erases NVS too, so the device must be re-provisioned over SoftAP afterwards.
+[group("flash")]
+flash-baseline example="idf_c6_rgb_clock": partition-check
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Build and validate BEFORE erasing, and capture the bootloader that passed:
+    # the flash after the erase reuses these artifacts and never rebuilds, so a
+    # compile error cannot leave a wiped device with nothing to flash onto it.
+    bl="$(scripts/preflight.sh "{{ example }}")"
+    # Pin one port across the erase and the flash. An ambiguous port must not reach
+    # a destructive step: with two boards attached, "let espflash choose" can erase
+    # one and flash the other.
+    port="${ESPFLASH_PORT:-$(scripts/detect-port.sh)}"
+    if [ -z "$port" ]; then
+        printf 'Error: no unique serial port detected.\n' >&2
+        printf 'Set ESPFLASH_PORT explicitly (e.g. ESPFLASH_PORT=/dev/cu.usbmodem1101 just flash-baseline),\n' >&2
+        printf 'or detach the other boards. Refusing to erase against an ambiguous port.\n' >&2
+        exit 1
+    fi
+    printf 'Using serial port %s\n' "$port"
+    # DRY_RUN=1 shows the exact device-touching commands, in order, without
+    # prompting or running them; scripts/flash-image.sh honours it too.
+    if [ "${DRY_RUN:-0}" = "1" ]; then
+        printf '[dry-run] would run: espflash erase-flash --port %s\n' "$port"
+    else
+        printf '\nAbout to ERASE the whole chip, including provisioned Wi-Fi/MQTT credentials.\n'
+        printf 'The device must be re-provisioned over SoftAP afterwards.\n'
+        read -r -p 'Type ERASE to continue: ' confirm
+        [ "$confirm" = "ERASE" ] || { printf 'Aborted — nothing was erased.\n' >&2; exit 1; }
+        espflash erase-flash --port "$port"
+    fi
+    scripts/flash-image.sh "{{ example }}" "$bl" "$port"
+
 # flash firmware and open serial monitor (e.g. idf_c6_rgb_clock, idf_c3_rgb_clock)
 [group("flash")]
 run example="idf_c6_rgb_clock": (flash example)
     just monitor
+
+# identify the chip on the serial port before flashing (honours ESPFLASH_PORT)
+# `--ignore-app-descriptor` disables espflash's own chip-model check, so this is
+# the only guard against flashing a C6 image onto an attached C3.
+[group("flash")]
+board-info:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    port="$(scripts/detect-port.sh)"
+    port_args=()
+    if [ -n "$port" ]; then
+        port_args=(--port "$port")
+    fi
+    espflash board-info ${port_args[@]+"${port_args[@]}"}
 
 # open serial monitor (no flash)
 [group("flash")]
@@ -96,14 +164,30 @@ monitor:
     set -euo pipefail
     port="$(scripts/detect-port.sh)"
     port_args=()
-    [ -n "$port" ] && port_args=(--port "$port")
-    espflash monitor "${port_args[@]}"
+    if [ -n "$port" ]; then
+        port_args=(--port "$port")
+    fi
+    espflash monitor ${port_args[@]+"${port_args[@]}"}
 
 # erase ESP32 flash (needed after sdkconfig changes)
 [confirm]
 [group("flash")]
 erase-flash:
     espflash erase-flash
+
+# print the esp-idf-sys-built bootloader path that `just flash` will use for a chip target (e.g. idf_c6_rgb_clock, idf_c3_rgb_clock)
+[group("flash")]
+bootloader-path example="idf_c6_rgb_clock":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    . scripts/lib.sh
+    eval "$(scripts/chip-env.sh '{{ example }}')"
+    bl="$(find_idf_bootloader "$TARGET" "${CARGO_TARGET_DIR:-target}")"
+    if [ -z "$bl" ]; then
+        printf 'No IDF-built bootloader found for %s — run `just build {{ example }}` first.\n' "$TARGET" >&2
+        exit 1
+    fi
+    printf '%s\n' "$bl"
 
 # ── Code Quality ─────────────────────────────────────────────────────────────
 

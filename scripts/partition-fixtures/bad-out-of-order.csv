@@ -1,0 +1,7 @@
+# ota_1 listed before ota_0. The rows are not sorted, so the previous-row overlap
+# check cannot be trusted; the validator must reject the ordering itself. Note the
+# real overlap hidden here: ota_0 at 0x20000 ends inside ota_1's range.
+nvs,      data, nvs,     0x9000,   0x6000,
+otadata,  data, ota,     0xf000,   0x2000,
+ota_1,    app,  ota_1,   0x1d0000, 0x1c0000,
+ota_0,    app,  ota_0,   0x20000,  0x1c0000,

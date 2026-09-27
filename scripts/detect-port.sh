@@ -18,6 +18,10 @@ set -euo pipefail
 # Honours $ESPFLASH_PORT — if it is set and non-empty, the script echoes it
 # verbatim without scanning, so the env var override always wins.
 #
+# $DETECT_PORT_DEV_DIR (default /dev) is the directory scanned. It exists so
+# scripts/flash-image-tests.sh can stage fake device nodes and exercise the
+# zero-, one- and many-port outcomes without hardware.
+#
 # Helpful diagnostics are written to stderr; only the chosen port (or nothing)
 # goes to stdout.
 
@@ -26,6 +30,7 @@ if [ -n "${ESPFLASH_PORT:-}" ]; then
     exit 0
 fi
 
+dev="${DETECT_PORT_DEV_DIR:-/dev}"
 candidates=()
 case "$(uname -s)" in
     Darwin)
@@ -33,17 +38,17 @@ case "$(uname -s)" in
         # should use.  Most setups expose both `cu.foo` and `tty.foo` for the
         # same physical device; fall back to `tty.*` only when no `cu.*`
         # candidates exist to avoid double-counting one device as two ports.
-        for pattern in /dev/cu.usbmodem* /dev/cu.usbserial* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbserial*; do
+        for pattern in "$dev"/cu.usbmodem* "$dev"/cu.usbserial* "$dev"/cu.SLAB_USBtoUART* "$dev"/cu.wchusbserial*; do
             [ -e "$pattern" ] && candidates+=("$pattern")
         done
         if [ ${#candidates[@]} -eq 0 ]; then
-            for pattern in /dev/tty.usbmodem* /dev/tty.usbserial* /dev/tty.SLAB_USBtoUART* /dev/tty.wchusbserial*; do
+            for pattern in "$dev"/tty.usbmodem* "$dev"/tty.usbserial* "$dev"/tty.SLAB_USBtoUART* "$dev"/tty.wchusbserial*; do
                 [ -e "$pattern" ] && candidates+=("$pattern")
             done
         fi
         ;;
     Linux)
-        for pattern in /dev/ttyUSB* /dev/ttyACM*; do
+        for pattern in "$dev"/ttyUSB* "$dev"/ttyACM*; do
             [ -e "$pattern" ] && candidates+=("$pattern")
         done
         ;;

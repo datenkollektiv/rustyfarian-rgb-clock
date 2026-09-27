@@ -29,6 +29,7 @@ timeline
               : README refresh — drop led-effects row, add Wokwi prose section
               : Write docs/architecture.md — threading model, MQTT callback, MqttBuilder subscriptions
               : Write docs/wokwi-simulation.md — what is modelled, CI usage, limits
+              : OTA MVP demo — MQTT-triggered A/B update with rollback (feature-doc)
 
     Mid term  : Write docs/testing-pyramid.md — all three tiers, what each catches and misses
               : Tier 3 — Hardware-in-the-Loop on Raspberry Pi (after Tier 2)
