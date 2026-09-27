@@ -1,5 +1,10 @@
-# Rust often needs a bit of an extra main task stack size compared to C (the default is 3K)
-CONFIG_ESP_MAIN_TASK_STACK_SIZE=8000
+# Rust needs more main-task stack than C (IDF default 3584). 8000 was enough for the
+# clock itself, but rustyfarian-esp-idf-network 0.5.0's `wait_committed` clones
+# `Option<ProvisioningConfig>` (over 1 KiB of heapless strings) on the caller's
+# stack and overran 8000 by 40 bytes right after the portal committed. 16384 is
+# the rustyfarian-ws2812/peripherals default; the main thread parks after setup.
+# See docs/project-lore.md "MQTT & Networking". Run `just clean-idf` after changing.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 
 # Use this to set FreeRTOS kernel tick frequency to 1000 Hz (100 Hz by default).
 # This allows to use 1 ms granularity for thread sleeps (10 ms by default).
@@ -21,3 +26,9 @@ CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_DISABLE=y
 CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 CONFIG_LOG_MAXIMUM_LEVEL_INFO=y
+
+# A/B OTA rollback. The bootloader marks a newly activated slot PENDING_VERIFY and
+# reverts to the previous slot on the next boot unless the running app calls
+# esp_ota_mark_app_valid_cancel_rollback(). Only takes effect in a bootloader built
+# with this setting — see docs/project-lore.md "OTA & Firmware Update".
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y

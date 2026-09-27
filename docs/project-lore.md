@@ -21,6 +21,13 @@ Fix: set `WIFI_SSID` and `MQTT_HOST` (plain hostname, no scheme or port) in `.en
 Historical: network `0.5.0` made `ota_url` optional for `WifiMqttDevice` (ADR 014 amendment), prefilled `dev_name` from the configured `device_name`, and re-rendered a rejected `POST /save` through `load_prefill` instead of an empty form.
 Before that, empty OTA-URL and device-name fields made every submission fail with "N field error(s)" and wiped the whole form on each retry.
 
+**A `Stack protection fault` in task `main` right after `Provisioning event: Committed` is a 40-byte main-task stack overflow inside the network crate, not a provisioning failure.**
+`ProvisioningSession::wait_committed` in `rustyfarian-esp-idf-network 0.5.0` does `guard.committed.clone()` on the caller's stack, and `Option<ProvisioningConfig>` is over a kilobyte of fixed-capacity `heapless` strings, which overruns `CONFIG_ESP_MAIN_TASK_STACK_SIZE=8000` after the portal's own frames.
+The credentials are already persisted, and the `SW_CPU` reboot lands on the provisioned path, so the clock comes up and the crash is easy to miss; the firmware's own "Provisioning committed — restarting" line never prints.
+The panic's stack-memory dump contains the freshly submitted Wi-Fi and MQTT secrets in clear text, so never paste it into an issue or commit.
+Fix: `CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384` in `sdkconfig.defaults` (applied 2026-09-27, verified on hardware after `just clean-idf`); the upstream clone should still move off the caller's stack, see `docs/outbox/rustyfarian-network-wait-committed-stack-clone.md`.
+Symbolize a C6 dump with `riscv32-esp-elf-addr2line` from `~/.espressif/tools/esp-clang/*/esp-clang/bin/` against the release ELF; no `just` recipe wraps it yet.
+
 ---
 
 ## Toolchain & Dependencies
@@ -57,7 +64,9 @@ Check with `df -h /Volumes/RustBuilds` and `du -sh /Volumes/RustBuilds/targets/*
 **A truncated or corrupted firmware image does not exercise bootloader rollback — it never reaches the bootloader.**
 `OtaSession::fetch_and_apply` compares the streamed SHA-256 against the expected digest *before* calling `complete()`, which is the call that sets the boot partition.
 A digest mismatch aborts the write and leaves the boot slot unchanged, so the device keeps running the old image and no rollback occurs.
-Rollback fires only when a well-formed, correctly-hashed image is activated and then fails to call `esp_ota_mark_app_valid_cancel_rollback()` before the next reboot, moving the slot from `PENDING_VERIFY` to `INVALID`.
+Rollback fires only when a well-formed, correctly-hashed image is activated and then fails to call `esp_ota_mark_app_valid_cancel_rollback()` before the next reboot, moving the slot from `PENDING_VERIFY` to `ABORTED`.
+`INVALID` is the state an *explicit* `esp_ota_mark_app_invalid_rollback_and_reboot()` sets, not the automatic path — the two are easy to conflate when reading a slot's state during a rollback demo.
+Note also that withholding `mark_valid` does not itself reboot anything: something else must trigger the reset (a watchdog, a crash, or a power cycle) before the bootloader can act.
 Fix: to demonstrate rollback, build a valid image that deliberately skips `mark_valid` and reboots; use the truncated image to demonstrate verify-before-swap instead.
 
 **A cached bootloader silently disables rollback while every log line still looks healthy.**
@@ -67,7 +76,8 @@ Fix: run `just clean-idf` after changing `sdkconfig.defaults`, and treat a passi
 **`espflash` writes its own bundled ESP-IDF v5.5.1 bootloader unless `--bootloader` is passed, so no `sdkconfig` bootloader setting in this repo currently reaches the device.**
 `scripts/flash.sh` does not pass `--bootloader`, so the bootloader on the chip is never the one `esp-idf-sys` builds from `sdkconfig.defaults`, and it uses a 32 KB MMU page size against the v5.3.3 app's 64 KB.
 Any bootloader-level feature — rollback above all — is therefore inert while the build logs look correct.
-Fix: pass `--bootloader target/<target>/release/build/esp-idf-sys-*/out/build/bootloader/bootloader.bin` plus `--ignore-app-descriptor`, mirroring the implementation already in `rustyfarian-network`'s `scripts/flash.sh`.
+Fix: `scripts/flash.sh` now builds first and passes `--bootloader` plus `--ignore-app-descriptor`, resolving the path via `find_idf_bootloader` in `scripts/lib.sh`; `just bootloader-path` prints what it will use.
+A second `esp-idf-sys-*` build directory makes that resolution ambiguous and is a hard error — run `just clean-idf`.
 
 **App partition offsets must be 64 KiB aligned; 4 KiB alignment is only enough for data partitions.**
 `gen_esp32part.py` rejects a misaligned `app` partition, and the v5.3.3 bootloader maps flash in 64 KiB MMU pages.

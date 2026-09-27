@@ -45,6 +45,18 @@ else
 fi
 
 # --- Build / flash tools --------------------------------------------------
+# The partition validator needs bash 4+ (associative arrays). Scripts run via
+# `#!/usr/bin/env bash`, so what matters is the bash on PATH, not /bin/bash —
+# macOS ships 3.2 there and `brew install bash` puts a current one first on PATH.
+bash_on_path="$(command -v bash 2>/dev/null || true)"
+bash_major="$(bash -c 'printf %s "${BASH_VERSINFO[0]}"' 2>/dev/null || printf 0)"
+bash_ver="$(bash -c 'printf %s "$BASH_VERSION"' 2>/dev/null || printf unknown)"
+if [ "$bash_major" -ge 4 ]; then
+    status "bash" "ok" "$bash_ver at $bash_on_path (partition-check needs 4+)"
+else
+    status "bash" "MISSING" "$bash_ver at ${bash_on_path:-?} — run: brew install bash  (needed for: just partition-check / verify)"
+fi
+
 if command -v just >/dev/null 2>&1; then
     status "just" "ok" "$(just --version 2>/dev/null)"
 else
