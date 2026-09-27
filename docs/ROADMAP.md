@@ -31,6 +31,7 @@ timeline
               : Write docs/wokwi-simulation.md — what is modelled, CI usage, limits
               : OTA MVP demo — MQTT-triggered A/B update with rollback (feature-doc)
               : Adopt rustyfarian standard WS2812 data pins — C3 GPIO4 / C6 GPIO18 (was GPIO10)
+              : Investigate WS2812 phantom / vanishing hands — 3.3 V DIN into 5 V strips, boot self-test (docs/issues/led-display-signal-debugging.md)
 
     Mid term  : Write docs/testing-pyramid.md — all three tiers, what each catches and misses
               : Tier 3 — Hardware-in-the-Loop on Raspberry Pi (after Tier 2)

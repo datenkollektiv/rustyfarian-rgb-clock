@@ -54,7 +54,9 @@ _Status: open. Last updated during a debugging session; continue from "Open ques
    apart with an unlit LED between** (LED 3 real, LED 5 phantom); both turned yellow when the
    red second-hand walked over them. The phantom vanished for exactly one 5 s tick whenever
    the red sat two LEDs *before* the real green, reproducibly across a reset, and after a few
-   minutes the display settled into a correct, stable clock with no phantom.
+   minutes the display settled into a correct, stable clock with no phantom — and a few
+   minutes after that the **green minute hand vanished entirely** while red and blue kept
+   rendering, so the fault wanders between phantom and dropped pixels on the same rig.
    → Answers question 2 below: literally two LEDs at once, offset by two positions, not
    adjacent and not an R-byte loss; content-dependent and self-healing, which fits a marginal
    data level / edge at the first LED (3.3 V DIN into a 5 V-powered strip) rather than firmware.
