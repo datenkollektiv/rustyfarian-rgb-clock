@@ -1,6 +1,6 @@
 # Roadmap
 
-*Last updated: June 2026*
+*Last updated: September 2026*
 
 A May 2026 deep-dive review confirmed the near-term tier is complete and repositioned the project: the rgb-clock is the **integration test fixture** for the rustyfarian workspace — its testing pyramid validates that ws2812, network, and the embedded toolchain work together at every release.
 v0.2.0 shipped on 2026-05-12, establishing a stable pinned integration baseline.
@@ -30,6 +30,7 @@ timeline
               : Write docs/architecture.md — threading model, MQTT callback, MqttBuilder subscriptions
               : Write docs/wokwi-simulation.md — what is modelled, CI usage, limits
               : OTA MVP demo — MQTT-triggered A/B update with rollback (feature-doc)
+              : Adopt rustyfarian standard WS2812 data pins — C3 GPIO4 / C6 GPIO18 (was GPIO10)
 
     Mid term  : Write docs/testing-pyramid.md — all three tiers, what each catches and misses
               : Tier 3 — Hardware-in-the-Loop on Raspberry Pi (after Tier 2)

@@ -42,10 +42,15 @@ fn main() -> anyhow::Result<()> {
     let sys_loop = EspSystemEventLoop::take()?;
     let nvs = EspDefaultNvsPartition::take()?;
 
-    // GPIO 10 for the clock ring and GPIO 8 for the onboard status LED are the
-    // same on both supported chips (ESP32-C3 and ESP32-C6). The MCU cfg flag
-    // emitted by build.rs is available for future pin divergence if needed.
-    let clock_driver = Ws2812Rmt::new(peripherals.pins.gpio10)?;
+    // The clock ring follows the rustyfarian standard WS2812 data pin per chip
+    // (ESP32-C3: GPIO 4, ESP32-C6: GPIO 18), the same wiring as the
+    // `rustyfarian-ws2812` examples and the shared pogo-pin test rigs. The MCU
+    // cfg flag is emitted by build.rs. GPIO 8 stays the onboard status LED on
+    // both chips.
+    #[cfg(mcu = "esp32c3")]
+    let clock_driver = Ws2812Rmt::new(peripherals.pins.gpio4)?;
+    #[cfg(mcu = "esp32c6")]
+    let clock_driver = Ws2812Rmt::new(peripherals.pins.gpio18)?;
     let clock = Arc::new(Mutex::new(RGBClock::new(clock_driver)?));
 
     // Load the stored Wi-Fi + MQTT config, or fall into provisioning. The network

@@ -34,9 +34,10 @@ An ESP32-C6 RGB LED clock that displays time using 12 WS2812 NeoPixel LEDs arran
 
 | Signal                   | ESP32-C6 pin | ESP32-C3 pin |
 |:-------------------------|:-------------|:-------------|
-| WS2812 clock ring (DIN)  | **GPIO 10**  | **GPIO 10**  |
+| WS2812 clock ring (DIN)  | **GPIO 18**  | **GPIO 4**   |
 | Onboard RGB LED          | GPIO 8       | GPIO 8       |
 
+The ring uses the rustyfarian standard WS2812 data pin per chip, the same wiring as the `rustyfarian-ws2812` examples.
 Pin assignments live in `src/main.rs`.
 
 ## Quick Start
