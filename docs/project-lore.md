@@ -21,6 +21,11 @@ Fix: set `WIFI_SSID` and `MQTT_HOST` (plain hostname, no scheme or port) in `.en
 Historical: network `0.5.0` made `ota_url` optional for `WifiMqttDevice` (ADR 014 amendment), prefilled `dev_name` from the configured `device_name`, and re-rendered a rejected `POST /save` through `load_prefill` instead of an empty form.
 Before that, empty OTA-URL and device-name fields made every submission fail with "N field error(s)" and wiped the whole form on each retry.
 
+**Portal prefill values are chip-agnostic, so a `.env` client ID from one chip's onboarding leaks into the next chip's build.**
+`justfile` (`set dotenv-load`) loads the single shared `.env` into every build and `scripts/chip-env.sh` resolves only `MCU`/`TARGET`, so flashing `idf_c3_rgb_clock` after the C6 onboarding prefilled the portal with `MQTT_CLIENT_ID=rgb-clock-c6` (found 2026-09-28 on the C3 mini1).
+The client ID is in practice chip- and device-specific — two devices sharing one ID fight over the broker session.
+Fix: overwrite the prefill on the portal before saving (no rebuild needed); long-term, per-chip `.env` files plus a `build.rs` fail-fast guard on client-ID-vs-`MCU` mismatch.
+
 **A `Stack protection fault` in task `main` right after `Provisioning event: Committed` is a 40-byte main-task stack overflow inside the network crate, not a provisioning failure.**
 `ProvisioningSession::wait_committed` in `rustyfarian-esp-idf-network 0.5.0` does `guard.committed.clone()` on the caller's stack, and `Option<ProvisioningConfig>` is over a kilobyte of fixed-capacity `heapless` strings, which overruns `CONFIG_ESP_MAIN_TASK_STACK_SIZE=8000` after the portal's own frames.
 The credentials are already persisted, and the `SW_CPU` reboot lands on the provisioned path, so the clock comes up and the crash is easy to miss; the firmware's own "Provisioning committed — restarting" line never prints.
@@ -82,6 +87,25 @@ A second `esp-idf-sys-*` build directory makes that resolution ambiguous and is 
 **App partition offsets must be 64 KiB aligned; 4 KiB alignment is only enough for data partitions.**
 `gen_esp32part.py` rejects a misaligned `app` partition, and the v5.3.3 bootloader maps flash in 64 KiB MMU pages.
 Fix: start the first app slot at the next `0x10000` boundary and accept the padding, rather than packing app partitions tightly behind `otadata`/`phy_init`.
+
+**`uxTaskGetStackHighWaterMark` returns bytes on ESP-IDF, not the words the FreeRTOS docs and the generated binding comment describe.**
+ESP-IDF's RISC-V and Xtensa ports define `portSTACK_TYPE` as `uint8_t` (`StackType_t = u8` in the `esp-idf-sys` bindings), so one unit is one byte; multiplying by four, as upstream FreeRTOS guidance suggests, overstates free stack fourfold and hides an imminent overflow.
+The OTA worker logs this figure after every job to right-size `WORKER_STACK_BYTES`; read it as bytes and compare directly with `std::thread::Builder::stack_size`, which is also bytes.
+
+**Serial silence after an OTA job is expected, but it is not proof of health — a hung MQTT client looks exactly the same.**
+Tick handling logs at `log::debug!` while the firmware prints only `info` and above, and a failed OTA job ends on the `OTA stack high-water mark` line without rebooting, so a healthy idle clock prints nothing.
+The MQTT deadlock below is just as silent, so judge liveness only from outside the serial console: the ring keeps tracking the published time, and a fresh `ota/status` message still arrives.
+Found 2026-09-28 on the ESP32-C3: silence after the `checksum_mismatch` step was healthy, silence after a malformed command was the deadlock.
+
+**`try_publish` from inside an `on_message` callback deadlocks the MQTT client for good; the ring freezes and only a reset recovers.**
+`rustyfarian-esp-idf-network 0.5.0` runs `on_message` while the received event is still borrowed, and the ESP-IDF MQTT task waits for that event to be released while holding its API lock, so `enqueue` from the callback thread never returns.
+Mechanism: `esp_mqtt_task` takes `MQTT_API_LOCK` per loop and dispatches on a no-task event loop; esp-idf-svc's handler blocks in `zerocopy::Channel::share` until the next `connection.next()`; `esp_mqtt_client_enqueue` takes the same lock.
+No `publish dropped` warning appears (the call never returns an error), no ticks or commands are processed afterwards, and an already-valid slot never rolls back.
+Hit 2026-09-28 on the ESP32-C3: one malformed `ota/command` made `OtaSubmitter::reject` hang the client (feature doc item 8 add-on check).
+Fix: never publish from `on_message`; `try_send` the rejection to the `ota-reporter` thread, not the OTA worker (a `busy` rejection arrives exactly while the worker is blocked in a download) — the network crate itself subscribes from a spawned thread for the same reason.
+Fixed 2026-09-28 (bug 001, verified on the C3).
+The `Connected` event is dispatched under the same lock, so network 0.5.0's startup-message and `on_connect` enqueue share the hazard (unverified): do not enable `on_connect` or a startup topic without re-checking.
+Upstream 0.5.1 (guard in git `511b37f`, ADR 017 in `4ac3d42`) fixes both paths: `MqttHandle` calls from any callback now fail fast with `WrongThread`, and `on_connect` runs on a helper thread — the rule "never publish from `on_message`" still holds.
 
 ---
 

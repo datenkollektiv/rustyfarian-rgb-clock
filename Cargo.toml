@@ -32,18 +32,22 @@ clock-pure = { path = "crates/clock-pure" }
 ferriswheel = "0.7.0"
 rustyfarian-esp-idf-ws2812 = "0.7.0"
 
-# External crate from rustyfarian-network — published to crates.io at 0.5.0, which
-# carries the esp-idf-hal 0.47 / esp-idf-svc 0.53 / pennant 0.7 wave, the
-# `WifiMqttBoot` / `run_wifi_mqtt_portal` boot API, the `PortalDefaults` form
-# pre-fill, and the optional `ota_url` for `WifiMqttDevice` this firmware relies on
-# (ADR 014 amendment — the previous git pin still required it).
-# `default = []`, so an explicit feature list is required; `ota` adds `OtaSession`
-# plus the `juggler::ota` re-exports (`decide_update`, `ImageMetadata`, `Version`).
-rustyfarian-esp-idf-network = { version = "0.5", default-features = false, features = ["wifi", "mqtt", "provisioning", "ota"] }
+# External crate from rustyfarian-network 0.6.0 (crates.io): the OTA decision core
+# (`decide_offer` with its `Admission` gate, boot `reconcile`, `OtaError::code`) and
+# the OTA consumer runtime (`ota::runtime`: record store, boot reconciliation,
+# worker, reporter, health policy; upstream ADR 018), the MQTT callback guard
+# (upstream ADR 017, our ADR 005 and bug 001), the `wait_committed` stack fix, and
+# MQTT auto-reconnect after a mid-session disconnect (upstream bug 005).
+# Same esp-idf-hal 0.47 / esp-idf-svc 0.53 / pennant 0.7 wave as 0.5.0.
+# Hardware-validated as release candidate 2a3ac3f (docs/features/ota-mvp-v1.md,
+# validation item 11); 0.6.0 differs from it only in doc comments.
+# `default = []`, so an explicit feature list is required; `ota` adds `OtaSession`,
+# the `ota::runtime` consumer runtime and the `juggler::ota` re-exports.
+rustyfarian-esp-idf-network = { version = "0.6.0", default-features = false, features = ["wifi", "mqtt", "provisioning", "ota"] }
 
 [package]
 name = "rustyfarian-rgb-clock"
-version = "0.2.0"
+version = "0.3.0"
 authors.workspace = true
 edition.workspace = true
 rust-version = "1.95"
@@ -64,9 +68,12 @@ opt-level = "s"
 debug = true    # Symbols are nice, and they don't increase the size on Flash
 opt-level = "z"
 
-# No optional crate-level features are currently defined. This section is intentionally empty.
 [features]
 default = []
+# Demo-only image for OTA hardware scenario 6: never passes its health check and
+# restarts after 15 s without `mark_valid`, so the bootloader rolls back to the
+# previous slot. Built by `just build-unhealthy`; never enabled by `build`/`flash`.
+unhealthy = []
 
 [dependencies]
 anyhow.workspace = true

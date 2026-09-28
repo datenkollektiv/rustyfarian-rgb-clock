@@ -37,7 +37,7 @@ highlight = "all"
 unknown-registry = "warn"
 unknown-git = "warn"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-# Every dependency now resolves from crates.io: ws2812 at 0.7.0 and network at 0.5.0.
+# Every dependency resolves from crates.io (ws2812 0.7.0, network 0.6.0).
 # Keep this empty — a stale entry emits `unmatched-source` warnings, since neither a
 # crates.io nor a local dev path-patch source ever matches a git URL.
 allow-git = []
