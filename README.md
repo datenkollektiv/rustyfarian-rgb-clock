@@ -1,7 +1,7 @@
 # ESP32 C6 RGB Clock
 
 <p>
-  <img src="docs/rustyfarian-rgb-clock.png" alt="rustyfarian-rgb-clock — a smart RGB clock powered by ferriswheel, juggler, and stoker, running on ESP32-C6. A steampunk control panel showing the rustyfarian mascots tending a 12-LED clock face that reads 20:24, with WS2812 LED control (ferriswheel), network &amp; messaging (juggler), and battery &amp; power management (stoker)." width="720">
+  <img src="docs/rustyfarian-rgb-clock.png" alt="rustyfarian-rgb-clock — a smart RGB clock powered by ferriswheel, juggler, and stoker, running on ESP32-C6. A steampunk control panel showing the rustyfarian mascots tending a 12-LED clock face that reads 20:24, with WS2812 LED control (ferriswheel), network &amp; messaging (juggler), and battery &amp; power management (stoker)." width="1683">
 </p>
 
 [![CI](https://github.com/datenkollektiv/rustyfarian-rgb-clock/actions/workflows/rust.yml/badge.svg)](https://github.com/datenkollektiv/rustyfarian-rgb-clock/actions/workflows/rust.yml)
@@ -130,41 +130,46 @@ Fields:
 - `minute`: 0-59 (mapped to 12 positions)
 - `second`: 0-59 (mapped to 12 positions)
 
-## Firmware layout and flashing
+## Flashing
 
-The 4 MiB flash carries an A/B OTA layout — `ota_0` and `ota_1` at 1.75 MiB each, plus `otadata`, `nvs` and `phy_init` — so a future update can be written to the inactive slot while the running one keeps the clock alive.
-`partitions.csv` is the source of truth and is validated by `just partition-check`.
-That check covers the table's geometry only; `just image-check` generates the exact app image with `espflash save-image` and fails if it does not fit both slots, which is the check that tracks firmware growth.
-The generated image stays at `tmp/<target>-app.bin` for inspection; it is overwritten on every run, one file per target, and `tmp/` is ignored by git.
-`just partition-check` needs bash 4 or newer: macOS ships 3.2, so run `brew install bash` and make sure `/usr/bin/env bash` resolves to it (`just doctor` shows which one is on `PATH`).
-
-`just flash` builds first, then flashes the application together with the bootloader that `esp-idf-sys` built from this project's `sdkconfig.defaults`:
+The 4 MiB flash carries an A/B OTA layout: `ota_0` and `ota_1` at 1.75 MiB each, plus `otadata`, `nvs` and `phy_init`, as defined in `partitions.csv`.
 
 ```sh
 just flash
 just monitor
 ```
 
-Passing that bootloader explicitly is not optional.
-espflash bundles its own ESP-IDF v5.5.1 bootloader and writes that one unless told otherwise, which both mismatches this project's v5.3.3 app (32 KiB versus 64 KiB MMU pages) and silently discards every bootloader setting configured here — `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y` above all, without which OTA rollback is inert while `mark_valid()` still reports success.
-`scripts/preflight.sh` therefore builds, resolves exactly one bootloader, and refuses to continue unless rollback is compiled into that specific binary.
-It also runs the image-size check above, so a build that outgrew its slot never reaches the device.
-`scripts/preflight.sh` also validates `partitions.csv` first, so the normal `just flash` path cannot skip the table checks that `just flash-baseline` declares as a recipe dependency.
-`just bootloader-path` prints the one it would use; pass the target for the C3 (`just bootloader-path idf_c3_rgb_clock`).
+- `just flash` flashes the bootloader built from this project's `sdkconfig.defaults`, never espflash's bundled one, because only that one has OTA rollback enabled.
+- Before flashing it validates the partition table and checks that the image fits both slots (`just image-check`).
+- It refuses an attached chip that differs from the target, and needs exactly one serial port or an explicit `ESPFLASH_PORT`; `DRY_RUN=1 just flash` prints the device-touching commands without running them.
+- A partition layout change needs a full erase with `just flash-baseline`, which also clears `nvs`, so the device must be re-provisioned afterwards.
 
-Flashing needs exactly one serial port, either the single USB device found by `scripts/detect-port.sh` or an explicit `ESPFLASH_PORT`.
-Because `--ignore-app-descriptor` turns off espflash's own chip-model check, `scripts/flash-image.sh` asks the attached chip what it is with `espflash board-info` and refuses when the answer differs from the requested target, so a C6 image cannot land on an attached C3.
-`DRY_RUN=1 just flash` or `DRY_RUN=1 just flash-baseline` prints every device-touching command in order without running any of them.
+Pass the target for the C3 (`just flash idf_c3_rgb_clock`).
+The reasoning behind each safeguard is in the [OTA feature doc](docs/features/ota-mvp-v1.md#decisions).
 
-Changing the partition layout needs a full erase, because the bytes that become `otadata` previously held application data the bootloader would misread as slot state:
+## OTA updates
+
+The clock updates itself over the LAN: an MQTT command on `ota/command` points it at a manifest, it downloads and verifies the image into the inactive slot, reboots into it, and marks it valid only after a health check.
+An image that fails the check, or does not report the version its manifest promised, rolls back to the previous slot.
+Progress and results are published on `ota/status`.
 
 ```sh
-ESPFLASH_PORT=/dev/cu.usbmodem1101 just flash-baseline
+OTA_VERSION=0.3.7 just ota-artifact idf_c3_rgb_clock
+just ota-serve
 ```
 
-This builds and validates **before** erasing, so a compile error cannot leave a wiped device with nothing to flash onto it.
-It pins one serial port across both the erase and the flash, refuses to start when no unique port is detected, and requires typing `ERASE` to confirm.
-The erase clears `nvs` as well, so the device must be re-provisioned over SoftAP afterwards.
+Then, from another shell, send the staged manifest and follow the result (broker from `.env`):
+
+```sh
+just ota-push idf_c3_rgb_clock
+just ota-status
+```
+
+The offered version must be newer than the running one, and a version that was rolled back is refused until a different one is applied.
+This is a LAN demo: images are served over plain HTTP and integrity rests on SHA-256 alone.
+
+- Testing on hardware: [OTA hardware test runbook](docs/runbooks/ota-hardware-test.md)
+- Design, wire contract and status codes: [OTA feature doc](docs/features/ota-mvp-v1.md)
 
 ## Dependencies
 
@@ -172,11 +177,11 @@ This project uses external crates from companion repositories:
 
 All of them are consumed from crates.io; this repository has no git dependencies.
 
-| Crate                         | Version | Repository                                                                   | Description                               |
-|:------------------------------|:--------|:-----------------------------------------------------------------------------|:------------------------------------------|
-| `ferriswheel`                 | 0.7.0   | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | RGB ring effects (rainbow animations)     |
-| `rustyfarian-esp-idf-ws2812`  | 0.7.0   | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | ESP-IDF RMT driver for WS2812             |
-| `rustyfarian-esp-idf-network` | 0.5.0   | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | Wi-Fi, MQTT, SoftAP provisioning, and OTA |
+| Crate                         | Version               | Repository                                                                   | Description                               |
+|:------------------------------|:----------------------|:-----------------------------------------------------------------------------|:------------------------------------------|
+| `ferriswheel`                 | 0.7.0                 | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | RGB ring effects (rainbow animations)     |
+| `rustyfarian-esp-idf-ws2812`  | 0.7.0                 | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | ESP-IDF RMT driver for WS2812             |
+| `rustyfarian-esp-idf-network` | 0.6.0                 | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | Wi-Fi, MQTT, SoftAP provisioning, and OTA |
 
 The separate `rustyfarian-esp-idf-wifi` and `rustyfarian-esp-idf-mqtt` crates were consolidated upstream into `rustyfarian-esp-idf-network`, whose features this firmware enables explicitly (`wifi`, `mqtt`, `provisioning`, `ota`).
 

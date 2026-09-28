@@ -5,9 +5,10 @@
 # explicitly pass --target to override it.
 
 # Load the optional `.env` so its non-secret portal-prefill values (WIFI_SSID,
-# MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_CLIENT_ID) reach the `cargo` build behind
-# these recipes. A missing `.env` is a no-op — the build falls back to the
-# hardcoded defaults. See `.env.example`.
+# MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_CLIENT_ID) and OTA server settings
+# (OTA_HOST, OTA_PORT) reach the `cargo` build and OTA tooling behind these recipes.
+# A missing `.env` is a no-op — the build falls back to hardcoded defaults and
+# auto-detection. See `.env.example`.
 set dotenv-load := true
 
 host_target := `scripts/host-target.sh`
@@ -47,19 +48,20 @@ _default:
 
 # verify code quality without modifying files; suggests 'just pre-commit' on formatting issues
 [group("composite")]
-verify: partition-check partition-check-tests flash-image-tests
+verify: partition-check partition-check-tests flash-image-tests tick-topic-tests
     @cargo fmt --all -- --check || (printf '\nFormatting issues found — run `just pre-commit` to auto-fix.\n' >&2 && exit 1)
     cargo check
     cargo clippy -- -D warnings
+    cargo clippy --features unhealthy -- -D warnings
     cargo test -p clock-pure --target {{ host_target }}
 
 # full pre-commit verification: format, check, lint, test (modifies files — local use only)
 [group("composite")]
-pre-commit: fmt partition-check partition-check-tests flash-image-tests check clippy test
+pre-commit: fmt partition-check partition-check-tests flash-image-tests tick-topic-tests check clippy test
 
 # CI-equivalent verification (non-modifying): format check, deny, check, lint, test
 [group("composite")]
-ci: fmt-check partition-check partition-check-tests flash-image-tests deny check clippy test
+ci: fmt-check partition-check partition-check-tests flash-image-tests tick-topic-tests deny check clippy test
 
 # ── Build & Check ────────────────────────────────────────────────────────────
 
@@ -67,6 +69,11 @@ ci: fmt-check partition-check partition-check-tests flash-image-tests deny check
 [group("build")]
 build example="idf_c6_rgb_clock":
     scripts/build.sh "{{example}}"
+
+# build demo-only unhealthy image for OTA hardware scenario 6 (never marks itself valid, reboots after 15 s so the bootloader rolls back); never enabled by `build`/`flash`
+[group("build")]
+build-unhealthy example="idf_c6_rgb_clock":
+    scripts/build.sh "{{example}}" --features unhealthy
 
 # check the firmware for a named chip target (e.g. idf_c6_rgb_clock, idf_c3_rgb_clock)
 [group("build")]
@@ -91,6 +98,11 @@ partition-check-tests:
 [group("build")]
 flash-image-tests:
     @scripts/flash-image-tests.sh
+
+# run the host unit tests for the build-time tick-topic override (build_support/tick_topic.rs)
+[group("build")]
+tick-topic-tests:
+    @scripts/tick-topic-tests.sh
 
 # generate the real flashable app image for a chip target and check it fits both OTA slots (needs a prior `just build`)
 [group("build")]
@@ -189,6 +201,81 @@ bootloader-path example="idf_c6_rgb_clock":
     fi
     printf '%s\n' "$bl"
 
+# ── OTA ──────────────────────────────────────────────────────────────────────
+
+# stage the OTA image, hash it, and write the manifest under tmp/ota/. Demo knobs are env vars (just arguments are positional): OTA_VARIANT=unhealthy builds the demo image; OTA_VERSION=X rebuilds with X baked in and advertised in the manifest; OTA_TRUNCATE=N stages a `<variant>-truncated` artefact serving only the first N bytes under the full-image hash; OTA_TICK_TOPIC=T subscribes the image to T instead of `tick` so it fails its health check with the publisher still running
+[group("ota")]
+ota-artifact example="idf_c6_rgb_clock" variant=env_var_or_default("OTA_VARIANT", "release") version=env_var_or_default("OTA_VERSION", "") truncate=env_var_or_default("OTA_TRUNCATE", "0") tick_topic=env_var_or_default("OTA_TICK_TOPIC", ""):
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{variant}}" in
+        release)   build_recipe=build ;;
+        unhealthy) build_recipe=build-unhealthy ;;
+        *) printf 'Error: variant must be "release" or "unhealthy", got "%s"\n' "{{variant}}" >&2; exit 1 ;;
+    esac
+    # A version override is baked into the image (build.rs reads it), so the
+    # binary reports exactly what the manifest advertises. The next plain
+    # `just build` rebuilds with the package version again.
+    # Trimmed exactly as build.rs trims it, so a blank value means no override
+    # and the staging directory names the topic the image really carries.
+    tick_topic={{quote(tick_topic)}}
+    tick_topic="${tick_topic#"${tick_topic%%[![:space:]]*}"}"
+    tick_topic="${tick_topic%"${tick_topic##*[![:space:]]}"}"
+    if [ -n "$tick_topic" ]; then
+        # Demo-only tick topic, validated and baked in by build.rs; unset again
+        # for the next plain build, which then subscribes to `tick`.
+        export TICK_TOPIC_OVERRIDE="$tick_topic"
+    fi
+    if [ -n "{{version}}" ]; then
+        FIRMWARE_VERSION_OVERRIDE="{{version}}" just "$build_recipe" "{{example}}"
+    else
+        just "$build_recipe" "{{example}}"
+    fi
+    scripts/check-image-size.sh "{{example}}"
+    scripts/ota-artifact.sh "{{example}}" "{{variant}}" "{{version}}" "{{truncate}}" "$tick_topic"
+
+# serve the OTA artefacts from tmp/ota/ over plain HTTP on OTA_PORT (default 8000, the port `ota-artifact` bakes into the manifest URL); requires `just ota-artifact` first
+[group("ota")]
+ota-serve port=env_var_or_default("OTA_PORT", "8000"):
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d tmp/ota ]; then
+        printf 'Error: tmp/ota directory does not exist\n' >&2
+        printf 'Run `just ota-artifact` first to stage the OTA image and manifest.\n' >&2
+        exit 1
+    fi
+    printf 'Serving OTA artefacts from tmp/ota/ on port %s\n' "{{port}}"
+    printf 'Note: http.server sends Content-Length, which the firmware downloader requires.\n' >&2
+    printf 'This is plain HTTP for LAN demo only — not for production.\n' >&2
+    python3 -m http.server --directory tmp/ota --bind 0.0.0.0 {{port}}
+
+# publish the last artefact staged by `just ota-artifact` to ota/command (broker from .env; DRY_RUN=1 prints the command)
+[group("ota")]
+ota-push example="idf_c6_rgb_clock":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command_file="tmp/ota/{{example}}/command.json"
+    if [ ! -f "$command_file" ]; then
+        printf 'Error: nothing staged for %s; run `just ota-artifact %s` first.\n' "{{example}}" "{{example}}" >&2
+        exit 1
+    fi
+    scripts/ota-mqtt.sh pub ota/command "$(cat "$command_file")"
+
+# ask the device running `from` to roll back to its previous slot (operator rollback; DRY_RUN=1 prints the command)
+[group("ota")]
+ota-rollback from:
+    scripts/ota-mqtt.sh pub ota/command '{"action":"rollback","from":"{{from}}"}'
+
+# publish a raw payload to ota/command, e.g. `just ota-command not-json` (DRY_RUN=1 prints the command)
+[group("ota")]
+ota-command payload:
+    scripts/ota-mqtt.sh pub ota/command {{quote(payload)}}
+
+# follow the device's OTA status messages on ota/status (Ctrl-C to stop)
+[group("ota")]
+ota-status:
+    scripts/ota-mqtt.sh sub ota/status
+
 # ── Code Quality ─────────────────────────────────────────────────────────────
 
 # format all code
@@ -205,6 +292,7 @@ fmt-check:
 [group("quality")]
 clippy:
     cargo clippy -- -D warnings
+    cargo clippy --features unhealthy -- -D warnings
 
 # run clippy on the pure clock-pure crate only (host target — no ESP-IDF toolchain needed)
 [group("quality")]

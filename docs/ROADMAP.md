@@ -32,8 +32,12 @@ timeline
               : OTA MVP demo — MQTT-triggered A/B update with rollback (feature-doc)
               : Adopt rustyfarian standard WS2812 data pins — C3 GPIO4 / C6 GPIO18 (was GPIO10)
               : Investigate WS2812 phantom / vanishing hands — 3.3 V DIN into 5 V strips, boot self-test (docs/issues/led-display-signal-debugging.md)
+              : Adopt the upstream Wi-Fi portal fallback — a wrong or changed Wi-Fi password must not need a cable (rustyfarian-network docs/features/wifi-portal-fallback-v1.md)
+              : Adopt upstream graceful MQTT/Wi-Fi shutdown before planned OTA restarts (rustyfarian-network docs/features/graceful-shutdown-before-restart-v1.md)
 
-    Mid term  : Write docs/testing-pyramid.md — all three tiers, what each catches and misses
+    Mid term  : Adopt the upstream OTA decision core (refused versions, boot reconciliation, error codes — rustyfarian-network docs/features/ota-decision-core-v1.md); locally: host-testable command parsing, typed reason enum, one NVS writer per record
+              : Adopt an upstream total OTA download deadline — trickling server keeps the worker busy; adopted in code on network git 6cfbb18 (300 s), C3 runbook pending (ota-mvp-v1 validation item 11)
+              : Write docs/testing-pyramid.md — all three tiers, what each catches and misses
               : Tier 3 — Hardware-in-the-Loop on Raspberry Pi (after Tier 2)
               : Audit clock-pure boundary tests — 0, 11, 12, 23, 59 edge cases
               : Migrate clock-pure Rgb tuple to RGB8 type from rgb crate (after boundary test audit)

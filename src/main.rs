@@ -1,5 +1,7 @@
+mod ota;
 mod rgb_clock;
 
+use crate::ota::policy::HealthSignals;
 use crate::rgb_clock::RGBClock;
 use anyhow::Context;
 use esp_idf_hal::gpio::Gpio8;
@@ -17,8 +19,11 @@ use rustyfarian_esp_idf_network::wifi::WiFiManager;
 use rustyfarian_esp_idf_ws2812::Ws2812Rmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
-const MQTT_TOPIC: &str = "tick";
+/// Time source topic, `tick` unless a demo OTA image was built with
+/// `OTA_TICK_TOPIC` (see `build.rs`) to fail its health check on purpose.
+const MQTT_TOPIC: &str = env!("TICK_TOPIC");
 
 /// SoftAP SSID prefix; the network crate appends the AP MAC's last two bytes as
 /// `Rustyfarian-XXXX`. Also documented in `docs/features/wifi-softap-provisioning-v1.md`.
@@ -31,6 +36,9 @@ const DEVICE_NAME: &str = "rgb-clock";
 const DEFAULT_MQTT_PORT: &str = "1883";
 
 fn main() -> anyhow::Result<()> {
+    // The OTA health dwell and failure deadline are measured from here: the
+    // runtime requires the boot instant, not association.
+    let booted_at = Instant::now();
     // It is necessary to call this function once. Otherwise, some patches to the runtime
     // implemented by esp-idf-sys might not link properly. See https://github.com/esp-rs/esp-idf-template/issues/71
     esp_idf_svc::sys::link_patches();
@@ -41,6 +49,16 @@ fn main() -> anyhow::Result<()> {
     let peripherals = Peripherals::take()?;
     let sys_loop = EspSystemEventLoop::take()?;
     let nvs = EspDefaultNvsPartition::take()?;
+
+    // Before anything that could crash: if this boot came from the slot the
+    // last OTA attempt targeted, record that the attempt was activated, so a
+    // later rollback of this image is still reported.
+    // Kept as a `Result`: the provisioning paths below must not depend on it;
+    // the clock path refuses to start without it.
+    let ota_records = ota::open_records(nvs.clone()).context("failed to open the OTA records");
+    if let Err(e) = &ota_records {
+        log::error!("{e:#}");
+    }
 
     // The clock ring follows the rustyfarian standard WS2812 data pin per chip
     // (ESP32-C3: GPIO 4, ESP32-C6: GPIO 18), the same wiring as the
@@ -82,13 +100,28 @@ fn main() -> anyhow::Result<()> {
         peripherals.pins.gpio8,
         clock,
         boot,
+        OtaBoot {
+            records: ota_records,
+            booted_at,
+        },
     )
+}
+
+/// What the clock path needs from the early OTA boot steps in `main`.
+struct OtaBoot {
+    /// The record store, or why it could not be opened; the clock path refuses
+    /// to start without it.
+    records: anyhow::Result<rustyfarian_esp_idf_network::ota::runtime::Records>,
+    /// Captured first in `main`: the health dwell and deadline are measured
+    /// from it.
+    booted_at: Instant,
 }
 
 /// Boots the clock in normal STA mode from a loaded provisioning bundle.
 ///
 /// Steady-state path: rainbow startup animation, Wi-Fi connect, MQTT subscribe,
-/// then park while callbacks drive the display.
+/// OTA worker, then the OTA health policy and a park while callbacks drive the
+/// display.
 fn run_clock(
     modem: Modem<'static>,
     sys_loop: EspSystemEventLoop,
@@ -96,7 +129,12 @@ fn run_clock(
     onboard_pin: Gpio8,
     clock: Arc<Mutex<RGBClock<'static>>>,
     boot: WifiMqttBoot,
+    ota_boot: OtaBoot,
 ) -> anyhow::Result<()> {
+    let OtaBoot {
+        records: ota_records,
+        booted_at,
+    } = ota_boot;
     // Start the startup animation in a background thread
     let animation_cancel = Arc::new(AtomicBool::new(false));
     let _animation_handle =
@@ -133,6 +171,13 @@ fn run_clock(
     let clock_clone = Arc::clone(&clock);
     let animation_cancel_clone = Arc::clone(&animation_cancel);
 
+    // OTA: the submitter is captured by the callback below; the worker and
+    // reporter threads start once the MQTT handle exists. The callback only
+    // parses and enqueues, and never publishes (bug 001).
+    let (ota_submitter, ota_runtime) = ota::channel(ota::config()?);
+    let health = Arc::new(HealthSignals::default());
+    let health_for_callback = Arc::clone(&health);
+
     let mqtt_config = boot.mqtt_config();
     // Lengths only — never the secret values. Makes a rejected (e.g. empty) host
     // or client_id diagnosable from serial without a debugger.
@@ -142,6 +187,11 @@ fn run_clock(
         mqtt_config.port,
         mqtt_config.client_id.len()
     );
+    if MQTT_TOPIC != "tick" {
+        log::warn!(
+            "Tick topic override in effect: subscribing to {MQTT_TOPIC:?} instead of \"tick\""
+        );
+    }
 
     // Subscription is managed by the builder, not by this firmware. The
     // contract we rely on from rustyfarian-esp-idf-network (documented on
@@ -149,10 +199,19 @@ fn run_clock(
     // `Connected` event — both the initial connection and every automatic
     // reconnect — and a failed SUBSCRIBE is logged and retried on the next
     // reconnect rather than dropped forever.
-    let _mqtt = MqttBuilder::new(mqtt_config)
+    let mqtt = MqttBuilder::new(mqtt_config)
         .subscribe(MQTT_TOPIC, QoS::AtLeastOnce)
+        .subscribe(ota::COMMAND_TOPIC, QoS::AtLeastOnce)
         .on_message(move |topic: &str, data: &[u8]| {
             use rgb_clock::LocalTime;
+
+            if ota_submitter.handle(topic, data) {
+                return;
+            }
+            if topic != MQTT_TOPIC {
+                log::debug!("ignoring message on unexpected topic {topic:?}");
+                return;
+            }
 
             // Cancel any running startup animation on the first time update.
             // Relaxed is sufficient: this is a standalone one-bit stop flag that
@@ -174,6 +233,15 @@ fn run_clock(
                         Ok(mut c) => {
                             if let Err(e) = c.set_local_time(time) {
                                 log::error!("Failed to set time: {:?}", e);
+                            } else {
+                                // Freshness signal for the OTA health policy: when
+                                // the last tick was received, parsed and rendered.
+                                // Never 0, which means "no tick yet".
+                                let since_boot = booted_at.elapsed().as_millis().max(1);
+                                health_for_callback.last_tick_ms.store(
+                                    u32::try_from(since_boot).unwrap_or(u32::MAX),
+                                    Ordering::Relaxed,
+                                );
                             }
                         }
                         // Don't drop ticks silently: a panic in another clock user
@@ -190,10 +258,28 @@ fn run_clock(
         })
         .build()?;
 
-    log::info!("Setup complete, parking main thread");
+    // A firmware that cannot take further updates must not boot silently: a
+    // failed spawn of the worker or reporter thread aborts startup, and a
+    // pending slot then rolls back.
+    let ota = ota_runtime.start(mqtt.clone(), ota_records?)?;
+
+    log::info!("Setup complete, running the OTA health policy on the main thread");
+    // Returns at once unless the running slot is pending verification; otherwise
+    // marks it valid once healthy or rolls back at the deadline. `wifi` stays
+    // owned here: dropping it would disconnect.
+    let verdict = ota.run_health_policy(
+        booted_at,
+        ota::policy::healthy(booted_at, &health, &mqtt, &wifi),
+    );
+    log::info!(
+        "OTA health policy finished: {verdict:?}; stack marks {:?}",
+        ota.stack_high_water()
+    );
+
+    log::info!("Parking main thread");
     // Park the main thread indefinitely — runtime work runs on background threads:
-    // the MQTT event-loop callbacks (time updates) and, during boot, the startup
-    // animation thread.
+    // the MQTT event-loop callbacks (time updates), the OTA worker and reporter,
+    // and, during boot, the startup animation thread.
     std::thread::park();
 
     Ok(())
@@ -229,7 +315,7 @@ fn run_provisioning(
             ap_password: None,
             channel: 1,
             device_name: DEVICE_NAME,
-            firmware_version: env!("CARGO_PKG_VERSION"),
+            firmware_version: ota::RUNNING_VERSION,
             profile: SchemaProfile::WifiMqttDevice,
             // Non-secret prefill so a fresh device shows sensible values instead of
             // empty fields. Universally-sane fallbacks apply out of the box;
