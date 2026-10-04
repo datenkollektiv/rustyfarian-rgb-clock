@@ -62,6 +62,15 @@ Verify the wave without the local `[patch]` redirects too (comment them out, reb
 The error surfaces as unrelated `could not compile core`/linker failures, and a toolchain bump rebuilds everything, so it usually hits during upgrades.
 Check with `df -h /Volumes/RustBuilds` and `du -sh /Volumes/RustBuilds/targets/*/*`; build on disk meanwhile with `just --set idf_dir target <recipe>`, or remount a bigger RAM disk (24 GiB fits the full rgb-clock build with room to spare).
 
+**RustRover's Cargo run configurations do not build what `just build` builds: they skip `.env` and use a different ESP-IDF tool install.**
+`ESP_IDF_TOOLS_INSTALL_DIR` comes from `.cargo/config.toml` `[env]` (`global`) in the IDE, but the justfile exports `workspace` when the RAM disk is unmounted, and both write to `./target`.
+Without `set dotenv-load`, the portal prefill (`WIFI_SSID`, `MQTT_*`) falls back to hardcoded defaults, and a Cargo "Run" config flashes the board via the `espflash flash --monitor` runner.
+Fix: use a Shell Script run configuration that calls `just build` (login shell `/bin/zsh -l`), stored in the git-ignored `.idea/runConfigurations/` — `.run/` is tracked in this public repo.
+"Sync Cargo changes" cannot be routed through `just`: it runs `cargo check --target riscv32imac-esp-espidf --all-targets` itself and fails with `CMake Error: The source ".../.espressif/esp-idf/..." does not match the source ".../.embuild/espressif/esp-idf/..."` when a `just` build already configured `./target`.
+That failed build script also leaves no `esp-idf-sys` bindings, so RustRover flags `esp_idf_svc::sys` items with E0425 although `just verify` passes.
+Fix: set `[build] target-dir = "target/ide"` in the git-ignored `.cargo/config.toml`, which every non-`just` cargo caller (RustRover, rust-analyzer, bare `cargo`) reads; the justfile always exports `CARGO_TARGET_DIR`, which overrides it.
+Never move this folder: the ESP-IDF CMake cache stores absolute paths, so delete it and let the next sync rebuild it.
+
 ---
 
 ## OTA & Firmware Update
