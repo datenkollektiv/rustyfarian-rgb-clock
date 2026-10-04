@@ -1,5 +1,11 @@
 [build]
 target = "riscv32imac-esp-espidf"
+# If your local copy sets ESP_IDF_TOOLS_INSTALL_DIR = "global", uncomment this so IDE
+# tooling (RustRover, rust-analyzer) and bare `cargo` build outside ./target; otherwise
+# their esp-idf-sys CMake cache collides with a `just` build. `just` always exports
+# CARGO_TARGET_DIR, which overrides this. Leave it commented here: CI's bare
+# `cargo build` expects ./target.
+# target-dir = "target/ide"
 
 [target.riscv32imac-esp-espidf]
 linker = "ldproxy"
