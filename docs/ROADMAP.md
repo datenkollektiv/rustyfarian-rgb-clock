@@ -1,6 +1,6 @@
 # Roadmap
 
-*Last updated: September 2026*
+*Last updated: October 2026*
 
 A May 2026 deep-dive review confirmed the near-term tier is complete and repositioned the project: the rgb-clock is the **integration test fixture** for the rustyfarian workspace — its testing pyramid validates that ws2812, network, and the embedded toolchain work together at every release.
 v0.2.0 shipped on 2026-05-12, establishing a stable pinned integration baseline.
@@ -24,6 +24,8 @@ Items move to `Ready` when they have a feature document in `docs/features/`.
 
 timeline
     title Rustyfarian RGB Clock Roadmap
+
+    Ready     : esp-hal clock — bare-metal C3 build next to the IDF firmware, M1 build setup and ring first, OTA deferred to an upstream esp-hal runtime port (feature-doc)
 
     Near term : SoftAP provisioning — replace env-baked Wi-Fi/MQTT credentials (feature-doc)
               : README refresh — drop led-effects row, add Wokwi prose section

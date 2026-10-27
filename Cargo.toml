@@ -1,5 +1,8 @@
 [workspace]
-members = ["crates/clock-pure"]
+# The bare-metal esp-hal crate is a member but not a default build: the root is a
+# real package, so bare `cargo check`/`clippy`/`build` only build the ESP-IDF
+# firmware. Build the hal crate explicitly through the `*-hal` just recipes.
+members = ["crates/clock-pure", "crates/rustyfarian-esp-hal-rgb-clock"]
 resolver = "2"
 
 [workspace.package]

@@ -1,0 +1,48 @@
+[package]
+name = "rustyfarian-esp-hal-rgb-clock"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+# esp-hal 1.2 and esp-rtos 0.4 declare rust-version 1.95.
+rust-version = "1.95"
+description = "RGB LED clock (esp-hal bare-metal runtime) - ESP32-C3, 12 WS2812 LEDs"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "rustyfarian-esp-hal-rgb-clock"
+path = "src/main.rs"
+test = false
+doctest = false
+bench = false
+
+[features]
+default = []
+# Exactly one chip feature per build; `just *-hal` recipes pass `--features esp32c3`.
+# esp32c6 follows with milestone M4.
+esp32c3 = [
+    "esp-hal/esp32c3",
+    "esp-rtos/esp32c3",
+    "esp-bootloader-esp-idf/esp32c3",
+    "esp-println/esp32c3",
+    "esp-backtrace/esp32c3",
+    "rustyfarian-esp-hal-ws2812/esp32c3",
+]
+
+[dependencies]
+# September 2026 esp-hal wave, exact pins copied from the upstream workspaces.
+esp-hal = { version = "=1.2.2", features = ["unstable"] }
+esp-rtos = { version = "=0.4.0", default-features = false, features = ["embassy"] }
+esp-bootloader-esp-idf = { version = "=0.6.0", default-features = false }
+# Console is the UART bridge. No `defmt` feature: defmt sections broke the IDF link
+# and the tiers share one Cargo.lock.
+esp-println = { version = "=0.18.0", default-features = false, features = ["uart", "critical-section", "log-04"] }
+esp-backtrace = { version = "=0.20.0", default-features = false, features = ["panic-handler", "println"] }
+embassy-executor = { version = "=0.10.0", default-features = false }
+embassy-time = { version = "=0.5.1", default-features = false }
+# `default-features = false` is mandatory: upstream defaults to esp32c6.
+rustyfarian-esp-hal-ws2812 = { version = "0.7.0", default-features = false, features = ["unstable", "async", "pennant"] }
+ferriswheel = "0.7.0"
+rgb = "0.8"
+log = "0.4"
+clock-pure = { path = "../clock-pure" }

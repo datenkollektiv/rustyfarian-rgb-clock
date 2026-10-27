@@ -32,6 +32,13 @@ export CARGO_TARGET_DIR := idf_dir
 # esp-idf-sys's ninja/compiler discovery.
 export ESP_IDF_TOOLS_INSTALL_DIR := if ramdisk_mounted == "true" { "global" } else { "workspace" }
 
+# Bare-metal esp-hal tier (ESP32-C3, `*-hal` recipes): its own target dir, isolated from
+# the IDF output, because `-Zbuild-std=core,alloc` artifacts must not mix with the
+# IDF `std` ones. The explicit --target-dir beats the exported CARGO_TARGET_DIR.
+# The chip's target triple and feature come from scripts/hal-chip-env.sh.
+hal_dir    := if ramdisk_mounted == "true" { ramdisk + "/targets/hal/" + file_name(justfile_directory()) } else { "target/hal" }
+hal_flags  := "-Zbuild-std=core,alloc --target-dir " + hal_dir + " -p rustyfarian-esp-hal-rgb-clock"
+
 # list available recipes (default)
 _default:
     @just --list
@@ -275,6 +282,49 @@ ota-command payload:
 [group("ota")]
 ota-status:
     scripts/ota-mqtt.sh sub ota/status
+
+# ── Bare-metal esp-hal (ESP32-C3; C6 in M4) ────────────────────────────────────────────
+
+# type-check the bare-metal esp-hal crate for a chip (e.g. c3)
+[group('hal')]
+check-hal chip="c3":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    chip_env="$(scripts/hal-chip-env.sh '{{ chip }}')"
+    eval "$chip_env"
+    cargo +esp check {{ hal_flags }} --target "$HAL_TARGET" --features "$HAL_FEATURE" --bins
+
+# lint the bare-metal esp-hal crate for a chip with warnings-as-errors (e.g. c3)
+[group('hal')]
+clippy-hal chip="c3":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    chip_env="$(scripts/hal-chip-env.sh '{{ chip }}')"
+    eval "$chip_env"
+    cargo +esp clippy {{ hal_flags }} --target "$HAL_TARGET" --features "$HAL_FEATURE" --bins -- -D warnings
+
+# build the bare-metal firmware for a chip, always --release as esp-hal recommends (e.g. c3)
+[group('hal')]
+build-hal chip="c3":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    chip_env="$(scripts/hal-chip-env.sh '{{ chip }}')"
+    eval "$chip_env"
+    cargo +esp build --release {{ hal_flags }} --target "$HAL_TARGET" --features "$HAL_FEATURE"
+
+# build, flash and monitor the bare-metal firmware for a chip; reuses the IDF bootloader when built, else espflash's bundled one (e.g. c3)
+[group('hal')]
+flash-hal chip="c3": (build-hal chip)
+    scripts/flash-hal.sh '{{ chip }}' '{{ hal_dir }}' '{{ idf_dir }}'
+
+# clean the bare-metal build artifacts
+[group('hal')]
+clean-hal:
+    cargo clean --target-dir {{ hal_dir }}
+
+# bare-metal gate: type-check and lint the esp-hal crate (not part of `verify`: needs build-std and a long first compile)
+[group('hal')]
+verify-hal chip="c3": (check-hal chip) (clippy-hal chip)
 
 # ── Code Quality ─────────────────────────────────────────────────────────────
 

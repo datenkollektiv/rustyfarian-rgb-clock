@@ -71,6 +71,11 @@ That failed build script also leaves no `esp-idf-sys` bindings, so RustRover fla
 Fix: set `[build] target-dir = "target/ide"` in the git-ignored `.cargo/config.toml`, which every non-`just` cargo caller (RustRover, rust-analyzer, bare `cargo`) reads; the justfile always exports `CARGO_TARGET_DIR`, which overrides it.
 Never move this folder: the ESP-IDF CMake cache stores absolute paths, so delete it and let the next sync rebuild it.
 
+**The esp-hal wave (`esp-hal 1.2.2`, `esp-sync 0.3.0`, `esp-rom-sys`) does not compile on the repo's IDF pin `nightly-2026-01-26`: E0658 on `cfg_select`.**
+Those crates use `cfg_select` as stabilised in Rust 1.95, and that January nightly predates the stabilisation although it already reports `1.95.0-nightly`.
+Fix: the `*-hal` recipes run `cargo +esp` (espup's `esp` toolchain, 1.95, as in rustyfarian-knob); leave the IDF pin in `rust-toolchain.toml` alone.
+See `docs/features/esp-hal-clock-v1.md`.
+
 ---
 
 ## OTA & Firmware Update
@@ -124,6 +129,10 @@ Upstream 0.5.1 (guard in git `511b37f`, ADR 017 in `4ac3d42`) fixes both paths: 
 When the current minute falls in the same 5-minute LED segment as the hour, both hands land on one LED: blue `(0,0,1)` + green `(0,1,0)` = cyan `(0,1,1)`, which renders as `(0, 10, 10)` after brightness scaling.
 At that dim level the green component is imperceptible; the user sees "blue and red" and reports a missing green LED.
 Fix: increase `DEFAULT_BRIGHTNESS` (30–50) so the cyan is perceptibly distinct from blue.
+
+**LED 0 is the 1 o'clock position, so a ring check worked out "by eye" from the clock face is off by one LED.**
+`hour_to_index(12)` is 11, and `minute_to_index` adds 55 before dividing by 5, so 12:34:56 lights LED 11 (hour), LED 5 (minute) and LED 10 (second) with no overlap.
+Fix: derive expected LEDs for a hardware check from `clock_pure::render_time` or its tests, never from the face.
 
 ---
 

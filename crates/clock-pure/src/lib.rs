@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), no_std)]
+
 //! Pure Rust clock utilities for 12-LED clock face.
 //!
 //! This crate provides hardware-independent time-to-LED-index mapping
@@ -122,6 +124,65 @@ pub fn add_colors(a: Rgb, b: Rgb) -> Rgb {
         a.1.saturating_add(b.1),
         a.2.saturating_add(b.2),
     )
+}
+
+/// Number of LEDs on the clock face.
+pub const LED_COUNT: usize = 12;
+
+/// Default brightness factor applied to the hand colors.
+pub const DEFAULT_BRIGHTNESS: u8 = 10;
+
+/// Base colors of the three clock hands (before brightness scaling).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClockColors {
+    /// Hour hand color.
+    pub hour: Rgb,
+    /// Minute hand color.
+    pub minute: Rgb,
+    /// Second hand color.
+    pub second: Rgb,
+}
+
+impl Default for ClockColors {
+    /// Hours blue (0, 0, 1), minutes green (0, 1, 0), seconds red (1, 0, 0).
+    fn default() -> Self {
+        Self {
+            hour: (0, 0, 1),
+            minute: (0, 1, 0),
+            second: (1, 0, 0),
+        }
+    }
+}
+
+/// Renders a time onto the 12-LED clock face.
+///
+/// The hour hand is set first, the minute and second hands are blended on top
+/// with saturating addition (so overlapping hands mix their colors), and the
+/// result is scaled by `brightness`.
+///
+/// # Example
+///
+/// ```
+/// use clock_pure::{render_time, ClockColors, DEFAULT_BRIGHTNESS};
+///
+/// let leds = render_time(12, 0, 0, &ClockColors::default(), DEFAULT_BRIGHTNESS);
+/// assert_eq!(leds[11], (10, 10, 10)); // all three hands overlap -> white
+/// assert_eq!(leds[0], (0, 0, 0));
+/// ```
+pub fn render_time(
+    hour: u8,
+    minute: u8,
+    second: u8,
+    colors: &ClockColors,
+    brightness: u8,
+) -> [Rgb; LED_COUNT] {
+    let mut state = [(0, 0, 0); LED_COUNT];
+    state[hour_to_index(hour)] = colors.hour;
+    let minute_idx = minute_to_index(minute);
+    state[minute_idx] = add_colors(state[minute_idx], colors.minute);
+    let second_idx = second_to_index(second);
+    state[second_idx] = add_colors(state[second_idx], colors.second);
+    state.map(|c| scale_color(c, brightness))
 }
 
 #[cfg(test)]
@@ -453,6 +514,60 @@ mod tests {
         let blended = add_colors(hour, minute);
         let scaled = scale_color(blended, 10);
         assert_eq!(scaled, (0, 255, 255));
+    }
+
+    // ===== render_time tests =====
+
+    #[test]
+    fn test_render_time_no_overlap() {
+        // 3:30:05 -> hour LED 2 blue, minute LED 5 green, second LED 0 red
+        let leds = render_time(3, 30, 5, &ClockColors::default(), 10);
+        let mut expected = [(0, 0, 0); LED_COUNT];
+        expected[2] = (0, 0, 10);
+        expected[5] = (0, 10, 0);
+        expected[0] = (10, 0, 0);
+        assert_eq!(leds, expected);
+    }
+
+    #[test]
+    fn test_render_time_hour_minute_overlap_is_cyan() {
+        // 12:00:30 -> hour and minute on LED 11, second on LED 5
+        let leds = render_time(12, 0, 30, &ClockColors::default(), 10);
+        assert_eq!(leds[11], (0, 10, 10));
+        assert_eq!(leds[5], (10, 0, 0));
+    }
+
+    #[test]
+    fn test_render_time_all_three_overlap_is_white() {
+        let leds = render_time(0, 0, 0, &ClockColors::default(), 10);
+        assert_eq!(leds[11], (10, 10, 10));
+        assert_eq!(leds.iter().filter(|c| **c != (0, 0, 0)).count(), 1);
+    }
+
+    #[test]
+    fn test_render_time_boundaries() {
+        // (hour, minute, second) -> expected (hour_idx, minute_idx, second_idx)
+        let cases = [
+            (0, 0, 0, 11, 11, 11),
+            (12, 59, 59, 11, 10, 10),
+            (23, 0, 59, 10, 11, 10),
+            (23, 59, 0, 10, 10, 11),
+        ];
+        for (h, m, s, hi, mi, si) in cases {
+            let colors = ClockColors::default();
+            let leds = render_time(h, m, s, &colors, 1);
+            let mut expected = [(0, 0, 0); LED_COUNT];
+            expected[hi] = colors.hour;
+            expected[mi] = add_colors(expected[mi], colors.minute);
+            expected[si] = add_colors(expected[si], colors.second);
+            assert_eq!(leds, expected, "time {h}:{m}:{s}");
+        }
+    }
+
+    #[test]
+    fn test_render_time_zero_brightness_is_dark() {
+        let leds = render_time(12, 34, 56, &ClockColors::default(), 0);
+        assert_eq!(leds, [(0, 0, 0); LED_COUNT]);
     }
 
     // ===== Out-of-range input behavior =====
