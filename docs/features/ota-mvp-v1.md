@@ -46,7 +46,7 @@ Every pin moves together or none does.
 Network's own changelog records the wave as compile-verified only; validating it on hardware is this repository's job.
 **Done on 2026-09-27**: baseline `b58d2b4` ran on an ESP32-C6-DevKitC-1 with the crates.io `0.7.0` ws2812 wave, `esp-idf-svc 0.53`, `rustyfarian-esp-idf-network 0.5.0` and `nightly-2026-01-26`, covering SoftAP provisioning, STA join, DHCP, MQTT subscribe and `tick` rendering.
 One regression surfaced: the main task overflows its 8000-byte stack by 40 bytes inside network's `wait_committed` right after the portal commits, because it clones `Option<ProvisioningConfig>` on the caller's stack.
-The reboot that follows lands on the provisioned path, so the clock still comes up; see `docs/project-lore.md` "MQTT & Networking" and `docs/outbox/rustyfarian-network-wait-committed-stack-clone.md`.
+The reboot that follows lands on the provisioned path, so the clock still comes up; see `docs/project-lore.md` "MQTT & Networking" and `docs/feature-requests/README.md` (fixed upstream in 0.6.0).
 Fixed locally the same day: `CONFIG_ESP_MAIN_TASK_STACK_SIZE` is now 16384 in `sdkconfig.defaults`, and a clean rebuild plus a full erase, re-flash and re-provisioning showed the commit completing with the firmware's own "Provisioning committed — restarting into normal boot" line and no fault.
 The upstream clone is still worth removing; the outbox request stays open.
 

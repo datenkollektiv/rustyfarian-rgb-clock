@@ -37,7 +37,9 @@ highlight = "all"
 unknown-registry = "warn"
 unknown-git = "warn"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-# Every dependency resolves from crates.io (ws2812 0.7.0, network 0.6.0).
+# Every dependency of the IDF firmware resolves from crates.io (ws2812 0.7.0, network 0.6.0).
+# `just deny` checks the root package only, so the esp-hal crate's git pin
+# (rustyfarian-esp-hal-network rev 0391e29) is not scanned here; see docs/features/esp-hal-clock-v1.md.
 # Keep this empty — a stale entry emits `unmatched-source` warnings, since neither a
 # crates.io nor a local dev path-patch source ever matches a git URL.
 allow-git = []

@@ -48,6 +48,20 @@ just run         # build, flash, and open serial monitor
 just monitor     # open serial monitor only
 ```
 
+Bare-metal esp-hal clock (ESP32-C3 only, no OTA). These recipes use the `esp` toolchain (`cargo +esp`, installed with `espup`) and default to the `c3` chip argument:
+
+```sh
+just check-hal c3    # type-check for riscv32imc-unknown-none-elf
+just clippy-hal c3   # lint with warnings as errors
+just verify-hal c3   # check + clippy; slow on the first run
+just build-hal c3    # release build
+just flash-hal c3    # build, flash, and open serial monitor
+just clean-hal       # remove the hal target directory
+```
+
+The hal crate is `crates/rustyfarian-esp-hal-rgb-clock`; it is not a workspace default member, so bare `cargo` and the IDF recipes stay on the ESP-IDF target.
+It provisions Wi-Fi at runtime through SoftAP and reads only the non-secret `.env` prefill values at build time.
+
 Credentials (`WIFI_SSID`, `WIFI_PASS`, `MQTT_HOST`, `MQTT_PORT`, `MQTT_CLIENT_ID`) are embedded at compile time via `build.rs` — no runtime config loading.
 
 MQTT time format (topic `tick`):
@@ -89,6 +103,12 @@ This constraint extends to reconnect handling: any code that reacts to connectio
 
 Non-obvious discoveries are recorded in `docs/project-lore.md`.
 Read it before any debugging task; add an entry after any fix that took more than 15 minutes or required knowledge not obvious from the error message.
+
+## Upstream Feature Requests
+
+Requests to other rustyfarian repositories live in `docs/feature-requests/`, one file each.
+Add every new request as a row in `docs/feature-requests/README.md` and keep its status and rank current (To write, Draft, Sent, Accepted, Done, Declined).
+Deliver a request by copying its file into the target repo's `review-queue/`.
 
 ## Coding Principles
 

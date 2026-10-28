@@ -27,6 +27,10 @@ esp32c3 = [
     "esp-println/esp32c3",
     "esp-backtrace/esp32c3",
     "rustyfarian-esp-hal-ws2812/esp32c3",
+    "rustyfarian-esp-hal-network/esp32c3",
+    "esp-alloc/esp32c3",
+    "esp-storage/esp32c3",
+    "esp-radio/esp32c3",
 ]
 
 [dependencies]
@@ -46,3 +50,15 @@ ferriswheel = "0.7.0"
 rgb = "0.8"
 log = "0.4"
 clock-pure = { path = "../clock-pure" }
+# Provisioning and Wi-Fi, git-pinned to upstream main (unreleased). `default-features = false`
+# keeps the `ws2812` feature off: our own ws2812 dependency above is the only one.
+# `mqtt` joins in M3. Drop the git pin for a crates.io release once one ships.
+rustyfarian-esp-hal-network = { git = "https://github.com/datenkollektiv/rustyfarian-network", rev = "0391e29a0f495709aaa911cdfbbd9b1f454e8003", default-features = false, features = ["provisioning", "embassy", "rt"] }
+# Same exact pins as the network crate, so the graph keeps one version of each.
+esp-alloc = "=0.11.0"
+# `critical-section` keeps flash writes safe while the radio runs; `embedded-storage`
+# provides the `NorFlash` impl the provisioning store needs.
+esp-storage = { version = "=0.10.0", default-features = false, features = ["critical-section", "embedded-storage"] }
+esp-radio = { version = "=1.0.0-beta.1", default-features = false }
+embassy-net = { version = "=0.8.0", default-features = false }
+embassy-sync = { version = "=0.8.0", default-features = false }

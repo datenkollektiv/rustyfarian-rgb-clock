@@ -37,6 +37,9 @@ export ESP_IDF_TOOLS_INSTALL_DIR := if ramdisk_mounted == "true" { "global" } el
 # IDF `std` ones. The explicit --target-dir beats the exported CARGO_TARGET_DIR.
 # The chip's target triple and feature come from scripts/hal-chip-env.sh.
 hal_dir    := if ramdisk_mounted == "true" { ramdisk + "/targets/hal/" + file_name(justfile_directory()) } else { "target/hal" }
+# Link-time floor for the main stack (the portal's POST /save peaks near 20.5 KiB).
+# Exported inside the `*-hal` recipes only, so the IDF build never sees it.
+hal_stack_min := "24576"
 hal_flags  := "-Zbuild-std=core,alloc --target-dir " + hal_dir + " -p rustyfarian-esp-hal-rgb-clock"
 
 # list available recipes (default)
@@ -292,6 +295,7 @@ check-hal chip="c3":
     set -euo pipefail
     chip_env="$(scripts/hal-chip-env.sh '{{ chip }}')"
     eval "$chip_env"
+    export ESP_HAL_CONFIG_ENSURE_MAIN_STACK_MINIMUM={{ hal_stack_min }}
     cargo +esp check {{ hal_flags }} --target "$HAL_TARGET" --features "$HAL_FEATURE" --bins
 
 # lint the bare-metal esp-hal crate for a chip with warnings-as-errors (e.g. c3)
@@ -301,6 +305,7 @@ clippy-hal chip="c3":
     set -euo pipefail
     chip_env="$(scripts/hal-chip-env.sh '{{ chip }}')"
     eval "$chip_env"
+    export ESP_HAL_CONFIG_ENSURE_MAIN_STACK_MINIMUM={{ hal_stack_min }}
     cargo +esp clippy {{ hal_flags }} --target "$HAL_TARGET" --features "$HAL_FEATURE" --bins -- -D warnings
 
 # build the bare-metal firmware for a chip, always --release as esp-hal recommends (e.g. c3)
@@ -310,6 +315,7 @@ build-hal chip="c3":
     set -euo pipefail
     chip_env="$(scripts/hal-chip-env.sh '{{ chip }}')"
     eval "$chip_env"
+    export ESP_HAL_CONFIG_ENSURE_MAIN_STACK_MINIMUM={{ hal_stack_min }}
     cargo +esp build --release {{ hal_flags }} --target "$HAL_TARGET" --features "$HAL_FEATURE"
 
 # build, flash and monitor the bare-metal firmware for a chip; reuses the IDF bootloader when built, else espflash's bundled one (e.g. c3)

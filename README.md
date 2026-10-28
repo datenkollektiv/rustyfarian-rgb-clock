@@ -111,6 +111,20 @@ It is reachable only while the device is unprovisioned and is never exposed over
 See the [threat model](docs/features/wifi-softap-provisioning-v1.md#security-stance--threat-model) for the
 accepted residual risk and the WPA2 hardening path.
 
+## Bare-metal esp-hal clock (ESP32-C3)
+
+The same clock also builds as a bare-metal `esp-hal` firmware for the ESP32-C3, next to the ESP-IDF firmware, which stays the default and the only build with OTA.
+It needs the `esp` toolchain from `espup`, and the recipes take the chip as an argument (`c3` is the only one for now).
+
+```sh
+just flash-hal c3
+```
+
+The ring shows a rainbow at boot and then a fixed time; SoftAP provisioning and Wi-Fi station mode are implemented but not yet validated on hardware.
+MQTT time and OTA are not in this tier yet.
+The two tiers use different partition tables and provisioning stores, so moving a board between them needs a full `just flash` and re-provisioning.
+Design and milestones: [docs/features/esp-hal-clock-v1.md](docs/features/esp-hal-clock-v1.md).
+
 ## MQTT Time Format
 
 The clock subscribes to the `tick` topic and expects JSON messages:

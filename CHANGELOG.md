@@ -31,6 +31,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `just doctor` reports the bash on `PATH` and flags anything below 4, which the partition validator needs; macOS ships 3.2 as `/bin/bash`
 - CI job `build-c3` — builds `idf_c3_rgb_clock` and runs `just image-check` on it, so the C3 target is compile- and size-verified on every push (1,417,120 bytes, 77% of a slot, on 2026-09-27); it has no Wokwi scenario and no hardware validation
 - `scripts/detect-port.sh` honours `DETECT_PORT_DEV_DIR` so the flash-script tests can stage fake device nodes; `just flash-image-tests` now has ten cases, adding `ESPFLASH_PORT` precedence, single-port resolution, and refusal with zero or several detected ports, plus an invariant that no refused run ever reaches `espflash flash`
+- Bare-metal `esp-hal` clock for the ESP32-C3 in `crates/rustyfarian-esp-hal-rgb-clock` (spec: `docs/features/esp-hal-clock-v1.md`), built next to the unchanged ESP-IDF firmware.
+- The esp-hal clock drives the WS2812 ring on GPIO 4 with a rainbow at boot and then a fixed time (M1, hardware-validated 2026-10-27).
+- SoftAP captive-portal provisioning and Wi-Fi station mode through `rustyfarian-esp-hal-network` (M2, awaiting hardware validation), with credentials stored in raw flash at `0x9000`.
+- `just check-hal`, `just clippy-hal`, `just build-hal`, `just flash-hal`, `just verify-hal` and `just clean-hal` take a chip argument (`c3` only), run `cargo +esp`, and have no OTA support.
 
 ### Validated
 
