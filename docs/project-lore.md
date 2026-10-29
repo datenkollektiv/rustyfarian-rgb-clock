@@ -30,7 +30,7 @@ Fix: overwrite the prefill on the portal before saving (no rebuild needed); long
 `ProvisioningSession::wait_committed` in `rustyfarian-esp-idf-network 0.5.0` does `guard.committed.clone()` on the caller's stack, and `Option<ProvisioningConfig>` is over a kilobyte of fixed-capacity `heapless` strings, which overruns `CONFIG_ESP_MAIN_TASK_STACK_SIZE=8000` after the portal's own frames.
 The credentials are already persisted, and the `SW_CPU` reboot lands on the provisioned path, so the clock comes up and the crash is easy to miss; the firmware's own "Provisioning committed — restarting" line never prints.
 The panic's stack-memory dump contains the freshly submitted Wi-Fi and MQTT secrets in clear text, so never paste it into an issue or commit.
-Fix: `CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384` in `sdkconfig.defaults` (applied 2026-09-27, verified on hardware after `just clean-idf`); upstream moved the clone off the caller's stack in network 0.6.0 (bug 002), see `docs/feature-requests/README.md`.
+Fix: `CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384` in `sdkconfig.defaults` (applied 2026-09-27, verified on hardware after `just clean-idf`); upstream moved the clone off the caller's stack in network 0.6.0 (bug 002).
 Symbolize a C6 dump with `riscv32-esp-elf-addr2line` from `~/.espressif/tools/esp-clang/*/esp-clang/bin/` against the release ELF; no `just` recipe wraps it yet.
 
 ---

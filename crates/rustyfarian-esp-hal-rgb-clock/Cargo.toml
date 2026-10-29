@@ -53,7 +53,11 @@ clock-pure = { path = "../clock-pure" }
 # Provisioning and Wi-Fi, git-pinned to upstream main (unreleased). `default-features = false`
 # keeps the `ws2812` feature off: our own ws2812 dependency above is the only one.
 # `mqtt` joins in M3. Drop the git pin for a crates.io release once one ships.
-rustyfarian-esp-hal-network = { git = "https://github.com/datenkollektiv/rustyfarian-network", rev = "0391e29a0f495709aaa911cdfbbd9b1f454e8003", default-features = false, features = ["provisioning", "embassy", "rt"] }
+rustyfarian-esp-hal-network = { git = "https://github.com/datenkollektiv/rustyfarian-network", rev = "bae2dc4c87cadd96c834d4f0cb3403bdf3a63790", default-features = false, features = ["provisioning", "embassy", "rt"] }
+# The re-entry hook types (`gate_reentry`, `ReentryRequest`) are not re-exported by the hal
+# crate's `provisioning` module yet; drop this pin once they are.
+# Same git source and rev as above, so the graph keeps a single `juggler`; move both together.
+juggler = { git = "https://github.com/datenkollektiv/rustyfarian-network", rev = "bae2dc4c87cadd96c834d4f0cb3403bdf3a63790", default-features = false, features = ["provisioning"] }
 # Same exact pins as the network crate, so the graph keeps one version of each.
 esp-alloc = "=0.11.0"
 # `critical-section` keeps flash writes safe while the radio runs; `embedded-storage`

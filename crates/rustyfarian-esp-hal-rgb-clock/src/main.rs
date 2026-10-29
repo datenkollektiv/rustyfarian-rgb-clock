@@ -4,6 +4,11 @@
 //! An unprovisioned board opens the SoftAP captive portal (`Rustyfarian-XXXX`) and
 //! reboots after a commit; a provisioned board joins Wi-Fi and shows a fixed time
 //! rendered through `clock-pure`. MQTT time follows in M3.
+//!
+//! Re-entry (upstream `provisioning-reentry-hook-v1`): BOOT (GPIO9) is sampled once,
+//! right after reset. A short press reopens the portal and keeps the stored record;
+//! a hold of `BOOT_HOLD_MS` erases the record, and both continue into the portal.
+//! Press BOOT after releasing RESET: holding it through reset enters ROM download mode.
 
 #![no_std]
 #![no_main]
@@ -14,7 +19,7 @@ use embassy_time::{with_timeout, Duration, Ticker, Timer};
 use esp_backtrace as _;
 use esp_hal::{
     efuse::{interface_mac_address, InterfaceMacAddress},
-    gpio::Level,
+    gpio::{Input, InputConfig, Level, Pull},
     rmt::{Rmt, TxChannelConfig, TxChannelCreator},
     rng::Rng,
     time::Rate,
@@ -22,6 +27,7 @@ use esp_hal::{
 use esp_radio::wifi::{Interface, WifiController};
 use esp_storage::FlashStorage;
 use ferriswheel::{Direction, PulseEffect, RainbowEffect};
+use juggler::provisioning::{gate_reentry, ReentryGate, ReentryRequest};
 use rgb::RGB8;
 use rustyfarian_esp_hal_network::provisioning::{
     resolve_softap_ssid, PortalConfig, PortalDefaults, ProvisioningBuilder, ProvisioningEvent,
@@ -81,6 +87,12 @@ const CONNECT_BACKOFF_SECS: u64 = 5;
 const COMMIT_FLUSH_MS: u64 = 1500;
 /// Pause before rebooting on a possibly transient error, so the log can be read.
 const REBOOT_DELAY_MS: u32 = 3000;
+/// Holding BOOT this long answers `FactoryReset`; a shorter press answers `Portal`.
+const BOOT_HOLD_MS: u32 = 3000;
+/// A low read is confirmed after this delay, so one noisy read does not open the portal.
+const BOOT_DEBOUNCE_MS: u32 = 20;
+/// Poll interval while BOOT is held.
+const BOOT_POLL_MS: u32 = 20;
 
 // Portal prefill values are baked at build time from `.env`; `build.rs` guards the port.
 // Passwords are never prefilled.
@@ -273,6 +285,44 @@ fn reboot_after_error() -> ! {
     esp_hal::system::software_reset()
 }
 
+/// The re-entry hook: samples BOOT (GPIO9, active low) once, mirroring upstream's
+/// `idf_c3_provision_mqtt`. Returns at once when the button is up, so a normal boot is
+/// not delayed; blocks only while it is held. Busy-waits: the scheduler is not running yet.
+fn boot_button_reentry(pin: esp_hal::peripherals::GPIO9<'static>) -> ReentryRequest {
+    let button = Input::new(pin, InputConfig::default().with_pull(Pull::Up));
+    let delay = esp_hal::delay::Delay::new();
+
+    if button.is_high() {
+        return ReentryRequest::None;
+    }
+    delay.delay_millis(BOOT_DEBOUNCE_MS);
+    if button.is_high() {
+        return ReentryRequest::None;
+    }
+
+    log::info!(
+        "BOOT held — release before {} ms to reopen the portal, keep holding to factory-reset",
+        BOOT_HOLD_MS
+    );
+    let mut held_ms = 0;
+    while button.is_low() && held_ms < BOOT_HOLD_MS {
+        delay.delay_millis(BOOT_POLL_MS);
+        held_ms += BOOT_POLL_MS;
+    }
+
+    // Decide from the loop's exit reason: still low means the hold ran out.
+    if button.is_low() {
+        log::info!(
+            "BOOT held for {} ms — factory reset requested",
+            BOOT_HOLD_MS
+        );
+        ReentryRequest::FactoryReset
+    } else {
+        log::info!("BOOT released early — portal requested");
+        ReentryRequest::Portal
+    }
+}
+
 #[esp_rtos::main]
 async fn main(spawner: Spawner) {
     esp_println::logger::init_logger(log::LevelFilter::Info);
@@ -293,25 +343,47 @@ async fn main(spawner: Spawner) {
             halt();
         }
     };
+    // The hook runs before the store is read, so a re-entry answer never loads the record.
     // `load` alone: the config is ~1.3 KiB, so it is moved, never cloned.
-    let stored = match store.load() {
-        Ok(cfg) => cfg,
+    log::info!(
+        "Re-entry: press BOOT now to reopen the portal (hold {} ms to factory-reset)",
+        BOOT_HOLD_MS
+    );
+    let gate = match gate_reentry(|| boot_button_reentry(peripherals.GPIO9), || store.load()) {
+        Ok(gate) => gate,
         Err(e) => {
             log::error!("Failed to read the provisioning store: {:?}", e);
             reboot_after_error();
         }
     };
-    let provisioned = match stored {
-        Some(cfg) if cfg.profile() == SchemaProfile::WifiMqttDevice => Some(cfg),
-        Some(cfg) => {
+    let provisioned = match gate {
+        ReentryGate::Proceed(Some(cfg)) if cfg.profile() == SchemaProfile::WifiMqttDevice => {
+            Some(cfg)
+        }
+        ReentryGate::Proceed(Some(cfg)) => {
             log::warn!(
                 "Provisioned under {:?}, not WifiMqttDevice — entering SoftAP provisioning",
                 cfg.profile()
             );
             None
         }
-        None => {
+        ReentryGate::Proceed(None) => {
             log::info!("Not provisioned — entering SoftAP provisioning");
+            None
+        }
+        ReentryGate::Portal => {
+            log::info!("Re-entry: portal requested — the stored record is kept");
+            None
+        }
+        ReentryGate::FactoryReset => {
+            // The library never erases; the consumer does, before the store moves into the portal.
+            match store.erase_all() {
+                Ok(()) => log::info!("Re-entry: stored record erased"),
+                Err(e) => log::warn!(
+                    "Re-entry: erase failed ({:?}); continuing into the portal",
+                    e
+                ),
+            }
             None
         }
     };

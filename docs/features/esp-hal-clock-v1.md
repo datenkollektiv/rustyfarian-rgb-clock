@@ -6,7 +6,7 @@ desk-work: available
 # Feature: esp-hal Clock v1
 
 A bare-metal `esp-hal` build of the clock, next to the unchanged ESP-IDF firmware, without OTA.
-Missing upstream pieces become feature requests in `docs/feature-requests/`, or code contributions where appropriate.
+Missing upstream pieces become feature requests to the upstream repository, or code contributions where appropriate.
 
 ## Milestones
 
@@ -18,19 +18,20 @@ Missing upstream pieces become feature requests in `docs/feature-requests/`, or 
 
 ## Decisions
 
-|                                          Decision | Reason                                                     | Rejected Alternative             |
-|--------------------------------------------------:|:-----------------------------------------------------------|:---------------------------------|
-|             New crate `crates/rustyfarian-esp-hal-rgb-clock` | Mirrors the knob esp-hal tier; IDF firmware stays at root | Feature flag in the root package |
-|                 Not a `default-member` of the workspace | Bare `cargo` and IDF recipes stay on the espidf target     | `exclude` the crate              |
-|                            ESP32-C3 first, DIN GPIO 4 | User decision: the C6 board was given away                 | C6 first; both chips at once     |
-|      `rustyfarian-esp-hal-network` by git rev pin | esp-hal provisioning is only on unreleased main (`0391e29`)| Local path patch; wait for 0.7   |
-|      Broker is an IPv4 literal; DNS request filed upstream | esp-hal MQTT has no DNS yet (upstream ADR 019 §2)          | Contribute DNS before M3         |
-|                          OTA left out of v1 | esp-hal tier has `EspHalOtaManager` only, no runtime        | Hand-roll an OTA runtime locally |
-|       `clock-pure` becomes `no_std` outside tests | It uses nothing from `std` already                         | Copy the logic into the hal crate |
-|        Follow the knob build pattern (ADR 006 there) | One config, `-Zbuild-std=core,alloc` per recipe, `target/hal` | Second workspace                 |
-|    Store at `0x9000`/`0x6000` in the default NVS area | Default table has no free flash; survives reflash (ADR 015 §4 deviation) | Dedicated partition (M5)         |
-|     SoftAP SSID computed locally (`resolve_softap_ssid`) | `start()` does not own AP bring-up yet; keeps `Rustyfarian-XXXX` | Fixed SSID without MAC suffix    |
-|      72 KiB heap, 24 KiB link-time main-stack minimum | Portal `POST /save` peaks near 20.5 KiB on the shared stack | Smaller heap; unchecked stack    |
+|                                                                    Decision | Reason                                                                   | Rejected Alternative                 |
+|----------------------------------------------------------------------------:|:-------------------------------------------------------------------------|:-------------------------------------|
+|                            New crate `crates/rustyfarian-esp-hal-rgb-clock` | Mirrors the knob esp-hal tier; IDF firmware stays at root                | Feature flag in the root package     |
+|                                     Not a `default-member` of the workspace | Bare `cargo` and IDF recipes stay on the espidf target                   | `exclude` the crate                  |
+|                                                  ESP32-C3 first, DIN GPIO 4 | User decision: the C6 board was given away                               | C6 first; both chips at once         |
+|                                `rustyfarian-esp-hal-network` by git rev pin | esp-hal provisioning is only on unreleased main (`bae2dc4`)              | Local path patch; wait for 0.7       |
+| BOOT (GPIO9) re-entry via `juggler::gate_reentry`, sampled once after reset | Upstream hook (part 6 of portal fallback); recovery without a cable      | Wait for an esp-hal boot entry point |
+|                       Broker is an IPv4 literal; DNS request filed upstream | esp-hal MQTT has no DNS yet (upstream ADR 019 §2)                        | Contribute DNS before M3             |
+|                                                          OTA left out of v1 | esp-hal tier has `EspHalOtaManager` only, no runtime                     | Hand-roll an OTA runtime locally     |
+|                                 `clock-pure` becomes `no_std` outside tests | It uses nothing from `std` already                                       | Copy the logic into the hal crate    |
+|                               Follow the knob build pattern (ADR 006 there) | One config, `-Zbuild-std=core,alloc` per recipe, `target/hal`            | Second workspace                     |
+|                          Store at `0x9000`/`0x6000` in the default NVS area | Default table has no free flash; survives reflash (ADR 015 §4 deviation) | Dedicated partition (M5)             |
+|                        SoftAP SSID computed locally (`resolve_softap_ssid`) | `start()` does not own AP bring-up yet; keeps `Rustyfarian-XXXX`         | Fixed SSID without MAC suffix        |
+|                            72 KiB heap, 24 KiB link-time main-stack minimum | Portal `POST /save` peaks near 20.5 KiB on the shared stack              | Smaller heap; unchecked stack        |
 
 ## Constraints
 
@@ -42,7 +43,7 @@ Missing upstream pieces become feature requests in `docs/feature-requests/`, or 
 - Wi-Fi init starts the scheduler, so there is no second `esp_rtos::start`: the ring starts after init and is dark for a few hundred ms.
 - `ESP_HAL_CONFIG_ENSURE_MAIN_STACK_MINIMUM=24576` is exported by the `*-hal` recipes only; the link fails if the main stack is smaller.
 - The hal provisioning store writes raw flash in the NVS area, not the NVS format, so switching tiers on one board needs re-provisioning.
-- Accepted limitation, as on the IDF tier: the open SoftAP portal exposes the build-time prefill and lets anyone in range claim the device (`docs/feature-requests/rustyfarian-network-esp-hal-portal-access-control.md`).
+- Accepted limitation, as on the IDF tier: the open SoftAP portal exposes the build-time prefill and lets anyone in range claim the device.
 - Returning a board from the hal image to the IDF A/B firmware needs a full `just flash`, since the hal image uses espflash's default partition table.
 
 ## Open Questions
@@ -51,8 +52,8 @@ Missing upstream pieces become feature requests in `docs/feature-requests/`, or 
 - [x] Does `esp-hal 1.2.2` build on `nightly-2026-01-26`, or does the hal crate need its own toolchain? No: `esp-sync` needs the stable `cfg_select` (Rust 1.95); the `*-hal` recipes use `cargo +esp` (1.95.0-nightly, April 2026), the IDF pin is untouched.
 - [x] Partition table: can the hal image reuse `partitions.csv`, or does it need a hal-specific one? M1 uses espflash's default table (app at 0x10000); the A/B layout waits for M5.
 - [x] Partition table, further: M2 keeps the default table and puts the store in the NVS area (`0x9000`, 24 KiB), which the hal image does not otherwise use.
-- [x] Does the hal tier need the Wi-Fi failure fallback to the portal? Not for M2: log the reason, retry every 5 s, recover with `just erase-flash` (`docs/feature-requests/rustyfarian-network-esp-hal-wifi-failure-fallback.md`).
-- [x] Does `FactoryResetRequested` need an erase path? Upstream gap: M2 only resets (`docs/feature-requests/rustyfarian-network-esp-hal-provisioning-erase.md`).
+- [x] Does the hal tier need the Wi-Fi failure fallback to the portal? Not for M2: log the reason, retry every 5 s, recover with `just erase-flash`.
+- [x] Does `FactoryResetRequested` need an erase path? Upstream gap: M2 only resets.
 - [ ] When does upstream plan an esp-hal port of the OTA consumer runtime (blocks M5)?
 
 ## State
@@ -76,3 +77,4 @@ Missing upstream pieces become feature requests in `docs/feature-requests/`, or 
 - 2026-10-27 — M1 implemented: hal crate, `*-hal` recipes, `clock-pure::render_time`; `just verify`, `verify-hal`, `build-hal`, `deny` green; not yet flashed
 - 2026-10-27 — M1 hardware-validated on the C3; `*-hal` recipes take a `chip` argument (default `c3`, `just flash-hal c3`)
 - 2026-10-27 — M2 implemented (SoftAP portal, STA, store at `0x9000`, 24 KiB stack floor, 7 outbox requests); `just verify`, `verify-hal`, `build-hal`, `deny` green; not yet flashed; broker prefill must be an IPv4 literal
+- 2026-10-28 — M2 committed (`39c86a4`); adopted the upstream re-entry hook: pin `bae2dc4`, direct `juggler` pin, BOOT short press → portal, 3 s → erase; awaiting hardware test

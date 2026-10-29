@@ -34,6 +34,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Bare-metal `esp-hal` clock for the ESP32-C3 in `crates/rustyfarian-esp-hal-rgb-clock` (spec: `docs/features/esp-hal-clock-v1.md`), built next to the unchanged ESP-IDF firmware.
 - The esp-hal clock drives the WS2812 ring on GPIO 4 with a rainbow at boot and then a fixed time (M1, hardware-validated 2026-10-27).
 - SoftAP captive-portal provisioning and Wi-Fi station mode through `rustyfarian-esp-hal-network` (M2, awaiting hardware validation), with credentials stored in raw flash at `0x9000`.
+- Boot-time re-entry on the esp-hal clock through the upstream `juggler` re-entry hook: a short BOOT (GPIO 9) press right after reset reopens the portal and keeps the stored record, a 3 s hold erases it first (awaiting hardware validation).
 - `just check-hal`, `just clippy-hal`, `just build-hal`, `just flash-hal`, `just verify-hal` and `just clean-hal` take a chip argument (`c3` only), run `cargo +esp`, and have no OTA support.
 
 ### Validated

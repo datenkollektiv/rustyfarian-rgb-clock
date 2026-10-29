@@ -106,9 +106,8 @@ Read it before any debugging task; add an entry after any fix that took more tha
 
 ## Upstream Feature Requests
 
-Requests to other rustyfarian repositories live in `docs/feature-requests/`, one file each.
-Add every new request as a row in `docs/feature-requests/README.md` and keep its status and rank current (To write, Draft, Sent, Accepted, Done, Declined).
-Deliver a request by copying its file into the target repo's `review-queue/`.
+Deliver a request to another rustyfarian repository by copying its file into the target repo's `review-queue/`.
+Request drafts are local working files and are not committed; committed docs refer to the upstream feature doc, roadmap item or release instead.
 
 ## Coding Principles
 
