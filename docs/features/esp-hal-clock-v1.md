@@ -72,26 +72,13 @@ Missing upstream pieces become feature requests to the upstream repository, or c
 - [x] M1 — build setup and C3 ring (hardware-validated 2026-10-27: rainbow, then the clock hands)
   - 2026-10-30 rerun: the same async image garbles the first frames, then settles; the 2026-10-27 pass was likely luck (bug 002).
   - C3 flash check expects, for `FIXED_TIME` 12:34:56: blue on LED 11 (12 o'clock), green on LED 5 (6 o'clock), red on LED 10 (11 o'clock), all three separate; LED 0 is the 1 o'clock position.
-- [ ] M2 — provisioning and Wi-Fi (hardware test 2026-10-30: provisioning passed; ring and BOOT re-entry failed)
-  - Passed: amber pulse (reads yellow on WS2812, accepted), portal, `POST /save` → `Committed`, software reset, STA join, `Got IP`.
-  - Failed: ring frames garbled (flickering rainbow and pulse; one or two stray green LEDs instead of the hands).
-  - Root cause: the async RMT transmit; 289 codes on a 48-code channel are refilled from `TxFuture::poll`, and executor latency misses the ~30 µs deadline.
-  - Control images on the same board: M1 async without radio garbles then settles; with `place-rmt-driver-in-ram` it still garbles.
-  - M1 with the blocking driver inside `critical_section::with` is clean from the first frame, which rules out the 3.3 V data line.
-  - Fix candidate: blocking transmit in a critical section (~0.4 ms interrupts off per frame); needs its own plan and an M2 rerun with Wi-Fi.
-  - Failed: BOOT re-entry was never caught in five resets; the app samples GPIO9 once at ~250 ms (IDF boot gives ~500 ms), too short to hit by hand.
-  - Not tested: the 3 s erase, since the same sample gates it.
-  - The last "restarting into normal boot" line is cut off by the reset (UART FIFO not drained); cosmetic (bug 004).
-  - Done 2026-10-30: the ring runs the blocking driver in a critical section; clean rainbow and hands in STA, Wi-Fi unaffected (`docs/bugs/archive/002-esp-hal-async-rmt-garbles-ring-2026-10-30.md`).
-  - Done 2026-10-30: BOOT is polled for 2 s after the prompt (measured 1.995 s); short press, STA rejoin and 3 s erase pass on the C3, amber pulse seen (`docs/bugs/archive/003-esp-hal-boot-reentry-window-too-short-2026-10-30.md`).
+- [x] M2 — provisioning and Wi-Fi (hardware-validated on the C3 2026-10-30)
+  - Passed: unprovisioned boot → amber pulse, portal `Rustyfarian-XXXX`, `POST /save` → `Committed`, software reset, STA join, `Got IP`.
+  - Passed: clean rainbow and steady hands (blue LED 11, green LED 5, red LED 10), Wi-Fi unaffected by the blocking ring transmit.
+  - Passed: BOOT short press → portal with the record kept, then STA rejoin; 3 s hold → record erased, re-provisioned, STA join.
+  - Fixed on the way: garbled ring (`docs/bugs/archive/002-esp-hal-async-rmt-garbles-ring-2026-10-30.md`) and BOOT window (`docs/bugs/archive/003-esp-hal-boot-reentry-window-too-short-2026-10-30.md`).
+  - Open: the "restarting into normal boot" line is cut off by the reset; cosmetic (`docs/bugs/004-commit-restart-log-line-cut-2026-10-30.md`).
   - Deferred: a static ring cue during the BOOT window; it needs the ring built before `gate_reentry`.
-  - Next 3: rerun the full M2 check with Wi-Fi: portal, commit, STA join, steady hands, BOOT short press, 3 s erase.
-  - Done 2026-10-30: `Decisions` row for the BOOT window added.
-  - Expected checks for the rerun:
-    - Unprovisioned C3 logs "Not provisioned — entering SoftAP provisioning" and shows an amber pulse; the phone sees `Rustyfarian-XXXX`.
-    - After saving, the log says "Provisioning committed — restarting into normal boot", then the board reboots.
-    - Provisioned boot logs "WiFi connecting...", "Got IP address: ...", then shows the fixed time (blue LED 11, green LED 5, red LED 10).
-    - Serial log without a TTY: `just monitor-log tmp/<name>.log`.
   - Known gap: a wrong Wi-Fi password retries forever with the ring on the rainbow; recover with `just erase-flash`.
 - [ ] M3 — MQTT tick
 - [ ] M4 — C6 arm
@@ -115,3 +102,4 @@ Missing upstream pieces become feature requests to the upstream repository, or c
   - M3 not started
 - 2026-10-30 — Filed bugs 002 (ring), 003 (BOOT window), 004 (cut log line) and an upstream ws2812 request; next session starts with bug 002
 - 2026-10-30 — Bug 003 fixed: 2 s BOOT window; short press, STA rejoin, 3 s erase and re-provisioning verified on the C3; next is the full M2 rerun
+- 2026-10-30 — M2 closed on the bug 003 hardware log (portal, commit, STA, BOOT short press, 3 s erase); next is M3
