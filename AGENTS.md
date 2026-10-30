@@ -12,9 +12,16 @@ Current stable release: v0.2.0.
 
 Three layers with a strict hardware boundary:
 
-- **`crates/clock-pure/`** — `#![no_std]` pure Rust library. Provides `hour_to_index`, `minute_to_index`, `second_to_index`, `scale_color`, `add_colors`. Fully testable on the host without any embedded toolchain.
-- **`src/rgb_clock.rs`** — Firmware display layer. `RGBClock` wraps `WS2812RMT` and maps `LocalTime` to 12 LED positions using `clock-pure`. Startup rainbow animation via `ferriswheel` runs until the first MQTT tick arrives.
-- **`src/main.rs`** — Entry point. GPIO18 (C6) / GPIO4 (C3) = 12-LED NeoPixel ring; GPIO8 = onboard status LED. Flow: Wi-Fi init → MQTT connect → subscribe-watcher thread → clock updates. Main thread parks after setup; MQTT callbacks do all work.
+- **`crates/clock-pure/`** — `#![no_std]` pure Rust library, fully testable on the host without any embedded toolchain.
+  - Provides `hour_to_index`, `minute_to_index`, `second_to_index`, `scale_color`, `add_colors`.
+- **`src/rgb_clock.rs`** — Firmware display layer.
+  - `RGBClock` wraps `WS2812RMT` and maps `LocalTime` to 12 LED positions using `clock-pure`.
+  - Startup rainbow animation via `ferriswheel` runs until the first MQTT tick arrives.
+- **`src/main.rs`** — Entry point.
+  - GPIO18 (C6) / GPIO4 (C3) = 12-LED NeoPixel ring.
+  - GPIO8 = onboard status LED.
+  - Flow: Wi-Fi init → MQTT connect → subscribe-watcher thread → clock updates.
+  - Main thread parks after setup; MQTT callbacks do all work.
 
 External crates (git dependencies, path-patched locally via `.cargo/config.toml`):
 - `rustyfarian-ws2812` → `ferriswheel` (rainbow effects), `rustyfarian-esp-idf-ws2812` (RMT driver)
@@ -89,7 +96,8 @@ Brightness is applied via `scale_color` at render time.
 A dedicated watcher thread polls an `AtomicBool` flag set by `on_connect` and calls `subscribe()` from a normal thread context (see `src/main.rs`).
 This constraint extends to reconnect handling: any code that reacts to connection events must signal the watcher thread rather than calling `subscribe()` directly from the callback.
 
-**Error handling:** `anyhow::Result` + `.context()` in firmware; no `unwrap()` or `expect()` outside `main` or `#[cfg(test)]`. In `clock-pure`, return `Option` or a custom error type — `anyhow` must not appear there.
+**Error handling:** `anyhow::Result` + `.context()` in firmware; no `unwrap()` or `expect()` outside `main` or `#[cfg(test)]`.
+In `clock-pure`, return `Option` or a custom error type — `anyhow` must not appear there.
 
 **Embedded timing:** Use `FreeRtos::delay_ms()` inside embedded loops. `std::thread::sleep` does not yield to the FreeRTOS scheduler correctly on ESP-IDF.
 

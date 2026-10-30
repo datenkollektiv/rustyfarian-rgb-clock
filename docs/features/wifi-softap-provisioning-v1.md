@@ -77,7 +77,8 @@ surface today and would need upstream support; flagged for the future.
 
 ## Re-provisioning & recovery
 
-- **v1 non-goal:** a user-facing re-provisioning trigger. v1 provisions only when the NVS store is empty.
+- **v1 non-goal:** a user-facing re-provisioning trigger.
+  - v1 provisions only when the NVS store is empty.
 - **Supported recovery (v1):** erase the provisioning state via NVS/flash erase — `just erase-flash`,
   then power-cycle, re-opens the portal. This is the documented developer/field recovery path; it
   requires host tooling + a cable.

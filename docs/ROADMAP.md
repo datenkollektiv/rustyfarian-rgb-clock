@@ -2,9 +2,12 @@
 
 *Last updated: October 2026*
 
-A May 2026 deep-dive review confirmed the near-term tier is complete and repositioned the project: the rgb-clock is the **integration test fixture** for the rustyfarian workspace — its testing pyramid validates that ws2812, network, and the embedded toolchain work together at every release.
+A May 2026 deep-dive review confirmed the near-term tier is complete and repositioned the project.
+The rgb-clock is the **integration test fixture** for the rustyfarian workspace.
+Its testing pyramid validates that ws2812, network, and the embedded toolchain work together at every release.
 v0.2.0 shipped on 2026-05-12, establishing a stable pinned integration baseline.
-Near-term work now leads with the first post-baseline feature — SoftAP provisioning to retire the env-baked Wi-Fi/MQTT credentials ([`docs/features/wifi-softap-provisioning-v1.md`](features/wifi-softap-provisioning-v1.md)) — alongside the documentation layer for that baseline.
+SoftAP provisioning and the A/B OTA baseline have shipped since.
+The active work is a bare-metal esp-hal build of the clock ([`docs/features/esp-hal-clock-v1.md`](features/esp-hal-clock-v1.md)) next to the unchanged ESP-IDF firmware.
 Items move to `Ready` when they have a feature document in `docs/features/`.
 
 ```mermaid
@@ -25,20 +28,17 @@ Items move to `Ready` when they have a feature document in `docs/features/`.
 timeline
     title Rustyfarian RGB Clock Roadmap
 
-    Ready     : esp-hal clock — bare-metal C3 build next to the IDF firmware, M1 build setup and ring first, OTA deferred to an upstream esp-hal runtime port (feature-doc)
+    Ready     : esp-hal clock — bare-metal C3 build next to the IDF firmware, M1 ring hardware-validated, M2 provisioning and BOOT re-entry awaiting the C3 test, then M3 MQTT tick, OTA deferred to an upstream esp-hal runtime port (feature-doc) (in progress)
 
-    Near term : SoftAP provisioning — replace env-baked Wi-Fi/MQTT credentials (feature-doc)
-              : README refresh — drop led-effects row, add Wokwi prose section
+    Near term : README refresh — drop led-effects row, add Wokwi prose section
               : Write docs/architecture.md — threading model, MQTT callback, MqttBuilder subscriptions
               : Write docs/wokwi-simulation.md — what is modelled, CI usage, limits
               : OTA MVP demo — MQTT-triggered A/B update with rollback (feature-doc)
-              : Adopt rustyfarian standard WS2812 data pins — C3 GPIO4 / C6 GPIO18 (was GPIO10)
               : Investigate WS2812 phantom / vanishing hands — 3.3 V DIN into 5 V strips, boot self-test (docs/issues/led-display-signal-debugging.md)
               : Adopt the upstream Wi-Fi portal fallback — a wrong or changed Wi-Fi password must not need a cable (rustyfarian-network docs/features/wifi-portal-fallback-v1.md)
               : Adopt upstream graceful MQTT/Wi-Fi shutdown before planned OTA restarts (rustyfarian-network docs/features/graceful-shutdown-before-restart-v1.md)
 
     Mid term  : Adopt the upstream OTA decision core (refused versions, boot reconciliation, error codes — rustyfarian-network docs/features/ota-decision-core-v1.md); locally: host-testable command parsing, typed reason enum, one NVS writer per record
-              : Adopt an upstream total OTA download deadline — trickling server keeps the worker busy; adopted in code on network git 6cfbb18 (300 s), C3 runbook pending (ota-mvp-v1 validation item 11)
               : Write docs/testing-pyramid.md — all three tiers, what each catches and misses
               : Tier 3 — Hardware-in-the-Loop on Raspberry Pi (after Tier 2)
               : Audit clock-pure boundary tests — 0, 11, 12, 23, 59 edge cases

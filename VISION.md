@@ -2,7 +2,8 @@
 
 ## North Star
 
-Validate a replicable three-tier embedded testing pyramid (host tests, Wokwi simulation, hardware-in-the-loop) using a working RGB clock as the test fixture, so that future rustyfarian projects can adopt the approach with confidence.
+Validate a replicable three-tier embedded testing pyramid (host tests, Wokwi simulation, hardware-in-the-loop) using a working RGB clock as the test fixture.
+That lets future rustyfarian projects adopt the approach with confidence.
 
 ## Long-Term Goals
 
@@ -19,7 +20,8 @@ Validate a replicable three-tier embedded testing pyramid (host tests, Wokwi sim
 
 ## Non-Goals
 
-- This project is not a feature-rich clock product. New features and applications belong in other rustyfarian projects.
+- This project is not a feature-rich clock product.
+- New features and applications belong in other rustyfarian projects.
 - Chasing exhaustive hardware compatibility (other boards, LED types) is out of scope.
 - Building a general-purpose embedded testing framework — the goal is a replicable *approach*, not a library.
 
@@ -36,4 +38,5 @@ Validate a replicable three-tier embedded testing pyramid (host tests, Wokwi sim
 
 ## Vision History
 
-- 2026-03-13 — Initial vision created. Established that the project's primary purpose is validating the three-tier testing pyramid for ecosystem-wide adoption, not building clock features.
+- 2026-03-13 — Initial vision created.
+  - Established that the project's primary purpose is validating the three-tier testing pyramid for ecosystem-wide adoption, not building clock features.

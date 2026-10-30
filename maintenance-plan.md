@@ -1,7 +1,8 @@
 # Maintenance Plan
 
 Regular maintenance workbook for `rustyfarian-rgb-clock` — the ESP32-C6 RGB clock firmware and the `clock-pure` host-testable library.
-Because the clock is the **integration test fixture** of the rustyfarian workspace, most cycles are triggered by an upstream release of `rustyfarian-ws2812` or `rustyfarian-network` rather than by the calendar.
+Because the clock is the **integration test fixture** of the rustyfarian workspace, most cycles are triggered by an upstream release of `rustyfarian-ws2812` or `rustyfarian-network`.
+The calendar is not the trigger for most cycles.
 
 Covers: build verification, the upstream release-wave runbook, toolchain pins, security scanning, CI/CD, and hardware validation.
 

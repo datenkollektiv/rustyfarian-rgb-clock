@@ -238,7 +238,8 @@ Busy worker: run `just ota-push "$TARGET"` a second time while a download is run
 MQTT reconnect: interrupt the device's broker connection mid-session (restart the broker, or block it briefly), then restore it.
 Expect the serial log to show the disconnect and a reconnect within about 10 s, the ring to pick up `tick` again, and a following `just ota-push "$TARGET"` to be answered normally.
 
-Deferred offers (`report_pending`, `attempt_unresolved`) cannot be provoked on demand: the push and the rollback report travel through the same broker, so a push only lands while the report can be delivered too.
+Deferred offers (`report_pending`, `attempt_unresolved`) cannot be provoked on demand.
+The push and the rollback report travel through the same broker, so a push only lands while the report can be delivered too.
 If one occurs during a run, expect `failed { report_pending }`, then `rolled_back`, then `downloading` for the deferred version without pushing again.
 
 After the truncated scenario the inactive slot is partially overwritten and is no rollback target until the next successful update, so run the operator rollback (step 5) before it, never after.

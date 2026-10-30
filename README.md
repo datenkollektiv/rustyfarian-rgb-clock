@@ -1,7 +1,11 @@
 # ESP32 C6 RGB Clock
 
 <p>
-  <img src="docs/rustyfarian-rgb-clock.png" alt="rustyfarian-rgb-clock — a smart RGB clock powered by ferriswheel, juggler, and stoker, running on ESP32-C6. A steampunk control panel showing the rustyfarian mascots tending a 12-LED clock face that reads 20:24, with WS2812 LED control (ferriswheel), network &amp; messaging (juggler), and battery &amp; power management (stoker)." width="1683">
+  <img src="docs/rustyfarian-rgb-clock.png"
+    alt="rustyfarian-rgb-clock — a smart RGB clock powered by ferriswheel, juggler, and stoker, running on ESP32-C6.
+    A steampunk control panel showing the rustyfarian mascots tending a 12-LED clock face that reads 20:24.
+    The mascots cover WS2812 LED control (ferriswheel), network &amp; messaging (juggler), and battery &amp; power management (stoker)."
+    width="1683">
 </p>
 
 [![CI](https://github.com/datenkollektiv/rustyfarian-rgb-clock/actions/workflows/rust.yml/badge.svg)](https://github.com/datenkollektiv/rustyfarian-rgb-clock/actions/workflows/rust.yml)
@@ -17,7 +21,8 @@ An ESP32-C6 RGB LED clock that displays time using 12 WS2812 NeoPixel LEDs arran
 
 ## Vision
 
-> Validate a replicable three-tier embedded testing pyramid (host tests, Wokwi simulation, hardware-in-the-loop) using a working RGB clock as the test fixture, so that future rustyfarian projects can adopt the approach with confidence.
+> Validate a replicable three-tier embedded testing pyramid (host tests, Wokwi simulation, hardware-in-the-loop) using a working RGB clock as the test fixture.
+> That lets future rustyfarian projects adopt the approach with confidence.
 
 **We are building this for:** ourselves — learning and preparation for future embedded Rust projects and for future rustyfarian projects that will inherit this testing approach.
 
@@ -82,13 +87,23 @@ just verify
 ```
 
 The partition checks run first because they are the cheapest and guard the most expensive mistake.
-`just partition-check` validates `partitions.csv` against the rules ESP-IDF enforces only at flash time — 64 KiB alignment for app partitions, exact `type/subtype` pairs, `otadata` sized to two sectors, no overlaps, slots large enough for the image, and `nvs` still at its original offset so provisioned credentials survive.
-`just partition-check-tests` runs a 12-case regression suite over the fixtures in `scripts/partition-fixtures/`, asserting that each way a table can be wrong is still rejected with the right diagnostic.
-Both also run in CI.
+`just partition-check` validates `partitions.csv` against the rules ESP-IDF enforces only at flash time:
+
+- 64 KiB alignment for app partitions
+- exact `type/subtype` pairs
+- `otadata` sized to two sectors
+- no overlaps
+- slots large enough for the image
+- `nvs` still at its original offset so provisioned credentials survive
+
+`just partition-check-tests` runs a 12-case regression suite over the fixtures in `scripts/partition-fixtures/`.
+It asserts that each way a table can be wrong is still rejected with the right diagnostic.
+`just partition-check` and `just partition-check-tests` both run in CI.
 
 Wi-Fi and MQTT credentials are provisioned at runtime via a SoftAP captive portal — no credentials live in the firmware image.
 A `.env` is optional: it only supplies **non-secret** defaults that pre-fill the portal form (see `.env.example`); passwords are never set there.
-On first boot (or after `just erase-flash`) the clock ring pulses amber and the device hosts an open `Rustyfarian-XXXX` access point; connect to it, open the captive portal, and submit your Wi-Fi + MQTT details.
+On first boot (or after `just erase-flash`) the clock ring pulses amber and the device hosts an open `Rustyfarian-XXXX` access point.
+Connect to it, open the captive portal, and submit your Wi-Fi + MQTT details.
 See [docs/features/wifi-softap-provisioning-v1.md](docs/features/wifi-softap-provisioning-v1.md) for details.
 Run `just setup-cargo-config` to create `.cargo/config.toml` from the template.
 
@@ -155,7 +170,8 @@ just monitor
 
 - `just flash` flashes the bootloader built from this project's `sdkconfig.defaults`, never espflash's bundled one, because only that one has OTA rollback enabled.
 - Before flashing it validates the partition table and checks that the image fits both slots (`just image-check`).
-- It refuses an attached chip that differs from the target, and needs exactly one serial port or an explicit `ESPFLASH_PORT`; `DRY_RUN=1 just flash` prints the device-touching commands without running them.
+- It refuses an attached chip that differs from the target, and needs exactly one serial port or an explicit `ESPFLASH_PORT`.
+- `DRY_RUN=1 just flash` prints the device-touching commands without running them.
 - A partition layout change needs a full erase with `just flash-baseline`, which also clears `nvs`, so the device must be re-provisioned afterwards.
 
 Pass the target for the C3 (`just flash idf_c3_rgb_clock`).
@@ -163,7 +179,8 @@ The reasoning behind each safeguard is in the [OTA feature doc](docs/features/ot
 
 ## OTA updates
 
-The clock updates itself over the LAN: an MQTT command on `ota/command` points it at a manifest, it downloads and verifies the image into the inactive slot, reboots into it, and marks it valid only after a health check.
+The clock updates itself over the LAN: an MQTT command on `ota/command` points it at a manifest.
+It downloads and verifies the image into the inactive slot, reboots into it, and marks it valid only after a health check.
 An image that fails the check, or does not report the version its manifest promised, rolls back to the previous slot.
 Progress and results are published on `ota/status`.
 
@@ -197,7 +214,8 @@ All of them are consumed from crates.io; this repository has no git dependencies
 | `rustyfarian-esp-idf-ws2812`  | 0.7.0                 | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | ESP-IDF RMT driver for WS2812             |
 | `rustyfarian-esp-idf-network` | 0.6.0                 | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | Wi-Fi, MQTT, SoftAP provisioning, and OTA |
 
-The separate `rustyfarian-esp-idf-wifi` and `rustyfarian-esp-idf-mqtt` crates were consolidated upstream into `rustyfarian-esp-idf-network`, whose features this firmware enables explicitly (`wifi`, `mqtt`, `provisioning`, `ota`).
+The separate `rustyfarian-esp-idf-wifi` and `rustyfarian-esp-idf-mqtt` crates were consolidated upstream into `rustyfarian-esp-idf-network`.
+This firmware enables its features explicitly (`wifi`, `mqtt`, `provisioning`, `ota`).
 
 ## Project Structure
 
@@ -232,7 +250,8 @@ rustyfarian-esp-idf-ws2812 = { path = "../rustyfarian-ws2812/crates/rustyfarian-
 rustyfarian-esp-idf-network = { path = "../rustyfarian-network/crates/rustyfarian-esp-idf-network" }
 ```
 
-Cargo keys `[patch]` sections by dependency source, so a leftover `[patch."https://github.com/..."]` section silently stops applying once a crate moves to crates.io — builds quietly use the published version and only a "patch was not used in the crate graph" warning hints at it.
+Cargo keys `[patch]` sections by dependency source, so a leftover `[patch."https://github.com/..."]` section silently stops applying once a crate moves to crates.io.
+Builds quietly use the published version, and only a "patch was not used in the crate graph" warning hints at it.
 Leave the network entry out while verifying a release, or a local-only fix will mask a gap in the published crate.
 
 Comment out the patches to build against the published GitHub repos.

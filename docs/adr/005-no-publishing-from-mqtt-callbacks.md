@@ -10,7 +10,8 @@ Rejecting a malformed `ota/command` used to publish a `failed` status directly f
 
 `try_publish` is non-blocking only against the Rust-side client mutex; the block happens inside `esp_mqtt_client_enqueue`, which takes the MQTT task's `MQTT_API_LOCK`.
 
-ESP-IDF holds that lock across the whole event-loop iteration, including the synchronous dispatch of `on_message`, so the callback's enqueue waits for the very lock the MQTT task is holding while it waits for the callback to return.
+ESP-IDF holds that lock across the whole event-loop iteration, including the synchronous dispatch of `on_message`.
+So the callback's enqueue waits for the very lock the MQTT task is holding while it waits for the callback to return.
 
 The client deadlocks until a reset (bug 001, `docs/bugs/archive/001-rejected-ota-command-deadlocks-mqtt-2026-09-28.md`).
 
@@ -22,7 +23,8 @@ Callbacks hand work to a dedicated thread over a bounded channel using a non-blo
 
 OTA rejections flow through the `ota-reporter` thread, which publishes `failed { reason }` (`src/ota/mod.rs`).
 
-The upstream `rustyfarian-esp-idf-network` 0.5.1 adds a `WrongThread` guard that turns any misuse into a fail-fast error (upstream ADR 017); this firmware adopts it once published (ROADMAP, Near term).
+The upstream `rustyfarian-esp-idf-network` 0.5.1 adds a `WrongThread` guard that turns any misuse into a fail-fast error (upstream ADR 017).
+This firmware adopts it once published (ROADMAP, Near term).
 
 ## Consequences
 

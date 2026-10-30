@@ -48,12 +48,20 @@ Missing upstream pieces become feature requests to the upstream repository, or c
 
 ## Open Questions
 
-- [x] Bootloader: reuse the IDF v5.3.3 bootloader from `just build idf_c3_rgb_clock`, as the knob does? Yes when built; otherwise espflash falls back to its bundled one (`scripts/flash-hal.sh`).
-- [x] Does `esp-hal 1.2.2` build on `nightly-2026-01-26`, or does the hal crate need its own toolchain? No: `esp-sync` needs the stable `cfg_select` (Rust 1.95); the `*-hal` recipes use `cargo +esp` (1.95.0-nightly, April 2026), the IDF pin is untouched.
-- [x] Partition table: can the hal image reuse `partitions.csv`, or does it need a hal-specific one? M1 uses espflash's default table (app at 0x10000); the A/B layout waits for M5.
+- [x] Bootloader: reuse the IDF v5.3.3 bootloader from `just build idf_c3_rgb_clock`, as the knob does?
+  - Yes when built; otherwise espflash falls back to its bundled one (`scripts/flash-hal.sh`).
+- [x] Does `esp-hal 1.2.2` build on `nightly-2026-01-26`, or does the hal crate need its own toolchain?
+  - No: `esp-sync` needs the stable `cfg_select` (Rust 1.95).
+  - The `*-hal` recipes use `cargo +esp` (1.95.0-nightly, April 2026).
+  - The IDF pin is untouched.
+- [x] Partition table: can the hal image reuse `partitions.csv`, or does it need a hal-specific one?
+  - M1 uses espflash's default table (app at 0x10000).
+  - The A/B layout waits for M5.
 - [x] Partition table, further: M2 keeps the default table and puts the store in the NVS area (`0x9000`, 24 KiB), which the hal image does not otherwise use.
-- [x] Does the hal tier need the Wi-Fi failure fallback to the portal? Not for M2: log the reason, retry every 5 s, recover with `just erase-flash`.
-- [x] Does `FactoryResetRequested` need an erase path? Upstream gap: M2 only resets.
+- [x] Does the hal tier need the Wi-Fi failure fallback to the portal?
+  - Not for M2: log the reason, retry every 5 s, recover with `just erase-flash`.
+- [x] Does `FactoryResetRequested` need an erase path?
+  - Upstream gap: M2 only resets.
 - [ ] When does upstream plan an esp-hal port of the OTA consumer runtime (blocks M5)?
 
 ## State
@@ -76,5 +84,8 @@ Missing upstream pieces become feature requests to the upstream repository, or c
 - 2026-10-27 — Feature doc created via /feature dialog
 - 2026-10-27 — M1 implemented: hal crate, `*-hal` recipes, `clock-pure::render_time`; `just verify`, `verify-hal`, `build-hal`, `deny` green; not yet flashed
 - 2026-10-27 — M1 hardware-validated on the C3; `*-hal` recipes take a `chip` argument (default `c3`, `just flash-hal c3`)
-- 2026-10-27 — M2 implemented (SoftAP portal, STA, store at `0x9000`, 24 KiB stack floor, 7 outbox requests); `just verify`, `verify-hal`, `build-hal`, `deny` green; not yet flashed; broker prefill must be an IPv4 literal
+- 2026-10-27 — M2 implemented (SoftAP portal, STA, store at `0x9000`, 24 KiB stack floor, 7 outbox requests)
+  - `just verify`, `verify-hal`, `build-hal`, `deny` green
+  - Not yet flashed
+  - Broker prefill must be an IPv4 literal
 - 2026-10-28 — M2 committed (`39c86a4`); adopted the upstream re-entry hook: pin `bae2dc4`, direct `juggler` pin, BOOT short press → portal, 3 s → erase; awaiting hardware test

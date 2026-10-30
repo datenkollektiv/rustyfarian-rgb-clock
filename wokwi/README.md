@@ -28,7 +28,7 @@ Captures multiple frames of the rainbow animation:
 
 ### Wokwi CLI
 
-```shell
+```sh
 # Install Wokwi CLI
 curl -L https://wokwi.com/ci/install.sh | sh
 

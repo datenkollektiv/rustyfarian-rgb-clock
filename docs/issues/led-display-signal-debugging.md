@@ -10,7 +10,8 @@ _Status: open. Last updated during a debugging session; continue from "Open ques
 
 ## Hardware setup
 
-- ESP32-C6, firmware in this repo. 12 WS2812 NeoPixels on a ring, DIN on the rustyfarian standard data pin per chip: **GPIO 18** on the ESP32-C6, **GPIO 4** on the ESP32-C3.
+- ESP32-C6, firmware in this repo.
+- 12 WS2812 NeoPixels on a ring, DIN on the rustyfarian standard data pin per chip: **GPIO 18** on the ESP32-C6, **GPIO 4** on the ESP32-C3.
 - Historical setup: firmware before the 2026-09-27 pin change drove DIN on **GPIO 10** on both chips; the observations below were made with that wiring.
 - The LED strip is powered from the **ESP32 5 V pin**; DIN is driven directly by the 3.3 V GPIO.
 - Onboard status LED on GPIO 8 (separate `Ws2812Rmt`).
