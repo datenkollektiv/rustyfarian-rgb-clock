@@ -145,6 +145,24 @@ Diagnostic: flex the cable while watching the LEDs; if the symptom tracks moveme
 
 ---
 
+## esp-hal Tier
+
+**The async `Ws2812Rmt` garbles a 12-LED C3 ring even without Wi-Fi, because esp-hal 1.2.2 refills RMT memory from `TxFuture::poll`, not the ISR.**
+A frame is 289 pulse codes on a 48-code channel, so each half-buffer refill has a ~30 µs deadline that executor wake-up latency misses at random.
+Symptoms: flickering rainbow, stray green LEDs instead of the hands; Wi-Fi makes it worse, and `place-rmt-driver-in-ram` does not help.
+The same board renders cleanly with the blocking driver inside `critical_section::with`, so it is not the unshifted 3.3 V data line.
+Fix (2026-10-30, bug 002): `Ws2812RmtBlocking` with `set_pixels_slice` inside `critical_section::with`; ~0.4 ms interrupts off per frame, Wi-Fi unaffected.
+
+**The hal clock samples BOOT (GPIO9) once at ~250 ms after reset, too early to hit by hand.**
+The IDF boot leaves ~500 ms before the same single-sample hook, and holding BOOT through reset enters ROM download mode instead.
+Five manual RESET-then-BOOT attempts on 2026-10-30 never registered; the hook needs a sampling window.
+
+**`just monitor` and `just flash-hal` fail without a TTY (`Failed to initialize input reader`), so agents cannot read the serial log through them.**
+Flashing still completes before the monitor fails.
+Fix: `just monitor-log tmp/<name>.log` runs `espflash monitor --non-interactive` into a file.
+
+---
+
 ## Wokwi Simulation
 
 **`save-to` in Wokwi CI scenario files resolves relative to the scenario file, not the project root.**

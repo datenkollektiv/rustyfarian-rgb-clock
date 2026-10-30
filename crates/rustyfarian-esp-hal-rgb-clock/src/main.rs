@@ -37,7 +37,7 @@ use rustyfarian_esp_hal_network::wifi::{
     ApConfig, ApConfigExt, AsyncWifiHandle, SoftApHandle, WiFiConfig, WiFiConfigExt, WiFiManager,
     WifiPowerSave,
 };
-use rustyfarian_esp_hal_ws2812::{buffer_size, Ws2812Rmt, RMT_CLK_DIV};
+use rustyfarian_esp_hal_ws2812::{buffer_size, Ws2812RmtBlocking, RMT_CLK_DIV};
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -143,11 +143,12 @@ enum RingMode {
 
 static RING_MODE: Signal<CriticalSectionRawMutex, RingMode> = Signal::new();
 
-type Ring = Ws2812Rmt<'static, esp_hal::Async, RMT_BUFFER>;
+type Ring = Ws2812RmtBlocking<'static, RMT_BUFFER>;
 
 /// Pushes a frame to the ring; driver errors are logged, never fatal.
-async fn show(ring: &mut Ring, pixels: &[RGB8; LED_COUNT]) {
-    if let Err(e) = ring.set_pixels_slice(pixels.as_slice()).await {
+/// Blocking inside a critical section: the RMT refills must meet a ~30 µs deadline (bug 002).
+fn show(ring: &mut Ring, pixels: &[RGB8; LED_COUNT]) {
+    if let Err(e) = critical_section::with(|_| ring.set_pixels_slice(pixels.as_slice())) {
         log::warn!("LED update failed: {:?}", e);
     }
 }
@@ -174,7 +175,7 @@ async fn run_rainbow(ring: &mut Ring) -> RingMode {
             log::warn!("Rainbow update failed: {:?}", e);
             return RING_MODE.wait().await;
         }
-        show(ring, &buffer).await;
+        show(ring, &buffer);
         ticker.next().await;
     }
 }
@@ -203,7 +204,7 @@ async fn run_pairing(ring: &mut Ring) -> RingMode {
             log::warn!("Provisioning pulse update failed: {:?}", e);
             return RING_MODE.wait().await;
         }
-        show(ring, &buffer).await;
+        show(ring, &buffer);
         ticker.next().await;
     }
 }
@@ -224,7 +225,7 @@ async fn run_time(ring: &mut Ring) -> RingMode {
         if let Some(next) = RING_MODE.try_take() {
             return next;
         }
-        show(ring, &pixels).await;
+        show(ring, &pixels);
         ticker.next().await;
     }
 }
@@ -388,9 +389,7 @@ async fn main(spawner: Spawner) {
         }
     };
 
-    let rmt = Rmt::new(peripherals.RMT, Rate::from_mhz(80))
-        .expect("RMT init")
-        .into_async();
+    let rmt = Rmt::new(peripherals.RMT, Rate::from_mhz(80)).expect("RMT init");
     let tx_config = TxChannelConfig::default()
         .with_clk_divider(RMT_CLK_DIV)
         .with_idle_output_level(Level::Low)
@@ -401,7 +400,7 @@ async fn main(spawner: Spawner) {
         .configure_tx(&tx_config)
         .expect("RMT TX channel")
         .with_pin(peripherals.GPIO4);
-    let ring: Ring = Ws2812Rmt::new(channel);
+    let ring: Ring = Ws2812RmtBlocking::new(channel);
 
     match provisioned {
         Some(cfg) => {

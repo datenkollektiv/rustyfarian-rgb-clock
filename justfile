@@ -191,6 +191,18 @@ monitor:
     fi
     espflash monitor ${port_args[@]+"${port_args[@]}"}
 
+# capture the serial monitor to a file without a TTY, for agents and background logging (e.g. tmp/boot.log)
+[group("flash")]
+monitor-log file *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    port="$(scripts/detect-port.sh)"
+    port_args=()
+    if [ -n "$port" ]; then
+        port_args=(--port "$port")
+    fi
+    espflash monitor --non-interactive ${port_args[@]+"${port_args[@]}"} {{ args }} > '{{ file }}' 2>&1
+
 # erase ESP32 flash (needed after sdkconfig changes)
 [confirm]
 [group("flash")]

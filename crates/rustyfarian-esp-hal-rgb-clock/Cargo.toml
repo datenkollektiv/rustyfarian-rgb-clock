@@ -45,10 +45,11 @@ esp-backtrace = { version = "=0.20.0", default-features = false, features = ["pa
 embassy-executor = { version = "=0.10.0", default-features = false }
 embassy-time = { version = "=0.5.1", default-features = false }
 # `default-features = false` is mandatory: upstream defaults to esp32c6.
-rustyfarian-esp-hal-ws2812 = { version = "0.7.0", default-features = false, features = ["unstable", "async", "pennant"] }
+rustyfarian-esp-hal-ws2812 = { version = "0.7.0", default-features = false, features = ["unstable", "pennant"] }
 ferriswheel = "0.7.0"
 rgb = "0.8"
 log = "0.4"
+critical-section = "1"
 clock-pure = { path = "../clock-pure" }
 # Provisioning and Wi-Fi, git-pinned to upstream main (unreleased). `default-features = false`
 # keeps the `ws2812` feature off: our own ws2812 dependency above is the only one.

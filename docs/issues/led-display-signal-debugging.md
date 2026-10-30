@@ -8,6 +8,10 @@ trim them from here.
 
 _Status: open. Last updated during a debugging session; continue from "Open question" below._
 
+_2026-10-30, esp-hal C3: the same symptom class (stray or vanished hands) came from a late RMT refill, not the 3.3 V data line._
+_The C3 ring rendered cleanly with unshifted 3.3 V DIN once the transmit ran blocking inside a critical section; see `docs/bugs/archive/002-esp-hal-async-rmt-garbles-ring-2026-10-30.md`._
+_The IDF driver also refills a 48-symbol ping-pong buffer, so refill latency is worth ruling out here before rewiring._
+
 ## Hardware setup
 
 - ESP32-C6, firmware in this repo.
