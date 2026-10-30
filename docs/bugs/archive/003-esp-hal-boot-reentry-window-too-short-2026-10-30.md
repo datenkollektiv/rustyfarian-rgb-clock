@@ -2,8 +2,8 @@
 id: 003
 title: BOOT re-entry on the esp-hal clock cannot be triggered by hand
 captured-on: 2026-10-30
-doc-version: 1
-status: open-defect
+doc-version: 2
+status: closed
 kind: defect
 ---
 
@@ -55,3 +55,6 @@ The press is never seen, so neither path runs; the 3 s erase is untested for the
 
 ## Session Log
 - 2026-10-30 — Captured as a defect during the M2 hardware test
+- 2026-10-30 — Fixed: `wait_for_press` polls GPIO9 for `BOOT_WINDOW_MS` (2000 ms) after the prompt; a bounced read keeps polling
+- 2026-10-30 — Hardware-verified on the C3: window measured 1.995 s; short press → portal with record kept, then STA rejoin; 3 s hold → record erased, re-provisioned, STA join
+- 2026-10-30 — Closed via /bug dialog

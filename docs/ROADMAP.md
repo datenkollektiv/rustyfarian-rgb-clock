@@ -28,7 +28,7 @@ Items move to `Ready` when they have a feature document in `docs/features/`.
 timeline
     title Rustyfarian RGB Clock Roadmap
 
-    Ready     : esp-hal clock — bare-metal C3 build next to the IDF firmware, M2 provisioning hardware-validated, ring flicker (bug 002) and BOOT window (bug 003) to fix before the M2 rerun, then M3 MQTT tick, OTA deferred to an upstream esp-hal runtime port (feature-doc) (in progress)
+    Ready     : esp-hal clock — bare-metal C3 build next to the IDF firmware, M2 provisioning, ring and BOOT re-entry hardware-validated, full M2 rerun next, then M3 MQTT tick, OTA deferred to an upstream esp-hal runtime port (feature-doc) (in progress)
 
     Near term : README refresh — drop led-effects row, add Wokwi prose section
               : Write docs/architecture.md — threading model, MQTT callback, MqttBuilder subscriptions

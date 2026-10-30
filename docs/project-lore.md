@@ -76,6 +76,11 @@ Those crates use `cfg_select` as stabilised in Rust 1.95, and that January night
 Fix: the `*-hal` recipes run `cargo +esp` (espup's `esp` toolchain, 1.95, as in rustyfarian-knob); leave the IDF pin in `rust-toolchain.toml` alone.
 See `docs/features/esp-hal-clock-v1.md`.
 
+**The bare `archive` pattern in `.gitignore` ignores every `archive/` directory, including `docs/bugs/archive/` and `docs/features/archive/`.**
+A doc already tracked stays tracked after `git mv`, but one filed and archived before its first commit is silently skipped by `git add` (bug 002, 2026-10-30).
+Detect: `git status --short --ignored docs` lists such files as `!!`.
+Fix (2026-10-30): the pattern is gone and the local dump it hid moved out of the repo; keep local material outside the worktree, not behind a broad ignore.
+
 ---
 
 ## OTA & Firmware Update
@@ -153,13 +158,19 @@ Symptoms: flickering rainbow, stray green LEDs instead of the hands; Wi-Fi makes
 The same board renders cleanly with the blocking driver inside `critical_section::with`, so it is not the unshifted 3.3 V data line.
 Fix (2026-10-30, bug 002): `Ws2812RmtBlocking` with `set_pixels_slice` inside `critical_section::with`; ~0.4 ms interrupts off per frame, Wi-Fi unaffected.
 
-**The hal clock samples BOOT (GPIO9) once at ~250 ms after reset, too early to hit by hand.**
+**The hal clock sampled BOOT (GPIO9) once at ~250 ms after reset, too early to hit by hand (fixed: 2 s window).**
 The IDF boot leaves ~500 ms before the same single-sample hook, and holding BOOT through reset enters ROM download mode instead.
 Five manual RESET-then-BOOT attempts on 2026-10-30 never registered; the hook needs a sampling window.
+Fix (2026-10-30, bug 003): `wait_for_press` polls GPIO9 for `BOOT_WINDOW_MS` (2000 ms) after the prompt; a press landed 0.86 s in on the C3.
 
 **`just monitor` and `just flash-hal` fail without a TTY (`Failed to initialize input reader`), so agents cannot read the serial log through them.**
 Flashing still completes before the monitor fails.
 Fix: `just monitor-log tmp/<name>.log` runs `espflash monitor --non-interactive` into a file.
+
+**`just monitor-log` can die mid-session with `Error: × Broken pipe` while the board keeps running, so the log silently stops at the last boot.**
+Presses and resets made after that never reach the file, and an unchanged log reads like a failed test (bug 003, 2026-10-30).
+Fix: before trusting a missing line, check `pgrep -fl espflash` and the recipe's stderr; restart the capture (it resets the board once).
+Pipe the file through a timestamping `tail -F` to measure boot windows, since `espflash` prints no host time.
 
 ---
 

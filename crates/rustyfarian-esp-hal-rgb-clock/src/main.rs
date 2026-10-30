@@ -5,9 +5,10 @@
 //! reboots after a commit; a provisioned board joins Wi-Fi and shows a fixed time
 //! rendered through `clock-pure`. MQTT time follows in M3.
 //!
-//! Re-entry (upstream `provisioning-reentry-hook-v1`): BOOT (GPIO9) is sampled once,
-//! right after reset. A short press reopens the portal and keeps the stored record;
-//! a hold of `BOOT_HOLD_MS` erases the record, and both continue into the portal.
+//! Re-entry (upstream `provisioning-reentry-hook-v1`): BOOT (GPIO9) is polled for
+//! `BOOT_WINDOW_MS` after the boot prompt. A short press reopens the portal and keeps
+//! the stored record; a hold of `BOOT_HOLD_MS` erases the record, and both continue
+//! into the portal.
 //! Press BOOT after releasing RESET: holding it through reset enters ROM download mode.
 
 #![no_std]
@@ -89,9 +90,11 @@ const COMMIT_FLUSH_MS: u64 = 1500;
 const REBOOT_DELAY_MS: u32 = 3000;
 /// Holding BOOT this long answers `FactoryReset`; a shorter press answers `Portal`.
 const BOOT_HOLD_MS: u32 = 3000;
+/// How long after the prompt a BOOT press is accepted; every normal boot waits this long.
+const BOOT_WINDOW_MS: u32 = 2000;
 /// A low read is confirmed after this delay, so one noisy read does not open the portal.
 const BOOT_DEBOUNCE_MS: u32 = 20;
-/// Poll interval while BOOT is held.
+/// Poll interval for the BOOT window and while BOOT is held.
 const BOOT_POLL_MS: u32 = 20;
 
 // Portal prefill values are baked at build time from `.env`; `build.rs` guards the port.
@@ -286,18 +289,33 @@ fn reboot_after_error() -> ! {
     esp_hal::system::software_reset()
 }
 
-/// The re-entry hook: samples BOOT (GPIO9, active low) once, mirroring upstream's
-/// `idf_c3_provision_mqtt`. Returns at once when the button is up, so a normal boot is
-/// not delayed; blocks only while it is held. Busy-waits: the scheduler is not running yet.
+/// Polls BOOT for up to `BOOT_WINDOW_MS`; true once a low read survives the debounce.
+/// A bounced read keeps polling, and its debounce counts toward the window.
+fn wait_for_press(button: &Input<'_>, delay: &esp_hal::delay::Delay) -> bool {
+    let mut waited_ms = 0;
+    while waited_ms < BOOT_WINDOW_MS {
+        if button.is_low() {
+            delay.delay_millis(BOOT_DEBOUNCE_MS);
+            if button.is_low() {
+                return true;
+            }
+            waited_ms += BOOT_DEBOUNCE_MS;
+        }
+        delay.delay_millis(BOOT_POLL_MS);
+        waited_ms += BOOT_POLL_MS;
+    }
+    false
+}
+
+/// The re-entry hook: polls BOOT (GPIO9, active low) for `BOOT_WINDOW_MS`, because the
+/// hal image reaches it ~250 ms after reset, too early for upstream's single read in
+/// `idf_c3_provision_mqtt`. A normal boot waits the window; a press then blocks while
+/// BOOT is held. Busy-waits: the scheduler is not running yet.
 fn boot_button_reentry(pin: esp_hal::peripherals::GPIO9<'static>) -> ReentryRequest {
     let button = Input::new(pin, InputConfig::default().with_pull(Pull::Up));
     let delay = esp_hal::delay::Delay::new();
 
-    if button.is_high() {
-        return ReentryRequest::None;
-    }
-    delay.delay_millis(BOOT_DEBOUNCE_MS);
-    if button.is_high() {
+    if !wait_for_press(&button, &delay) {
         return ReentryRequest::None;
     }
 
@@ -347,7 +365,8 @@ async fn main(spawner: Spawner) {
     // The hook runs before the store is read, so a re-entry answer never loads the record.
     // `load` alone: the config is ~1.3 KiB, so it is moved, never cloned.
     log::info!(
-        "Re-entry: press BOOT now to reopen the portal (hold {} ms to factory-reset)",
+        "Re-entry: press BOOT within {} ms to reopen the portal (hold {} ms to factory-reset)",
+        BOOT_WINDOW_MS,
         BOOT_HOLD_MS
     );
     let gate = match gate_reentry(|| boot_button_reentry(peripherals.GPIO9), || store.load()) {
