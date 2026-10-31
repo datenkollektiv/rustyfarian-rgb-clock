@@ -19,8 +19,8 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal}
 use embassy_time::{with_timeout, Duration, Ticker, Timer};
 use esp_backtrace as _;
 use esp_hal::{
-    efuse::{interface_mac_address, InterfaceMacAddress},
     gpio::{Input, InputConfig, Level, Pull},
+    peripherals::{FROM_CPU_INTR0, TIMG0, WIFI},
     rmt::{Rmt, TxChannelConfig, TxChannelCreator},
     rng::Rng,
     time::Rate,
@@ -28,15 +28,14 @@ use esp_hal::{
 use esp_radio::wifi::{Interface, WifiController};
 use esp_storage::FlashStorage;
 use ferriswheel::{Direction, PulseEffect, RainbowEffect};
-use juggler::provisioning::{gate_reentry, ReentryGate, ReentryRequest};
 use rgb::RGB8;
 use rustyfarian_esp_hal_network::provisioning::{
-    resolve_softap_ssid, PortalConfig, PortalDefaults, ProvisioningBuilder, ProvisioningEvent,
-    ProvisioningOutcome, ProvisioningStore, SchemaProfile,
+    gate_reentry, resolve_softap_ssid, DeviceName, PortalConfig, PortalDefaults,
+    ProvisioningBuilder, ProvisioningEvent, ProvisioningOutcome, ProvisioningStore, ReentryGate,
+    ReentryRequest, SchemaProfile,
 };
 use rustyfarian_esp_hal_network::wifi::{
-    ApConfig, ApConfigExt, AsyncWifiHandle, SoftApHandle, WiFiConfig, WiFiConfigExt, WiFiManager,
-    WifiPowerSave,
+    AsyncWifiHandle, WiFiConfig, WiFiConfigExt, WiFiManager, WifiPowerSave,
 };
 use rustyfarian_esp_hal_ws2812::{buffer_size, Ws2812RmtBlocking, RMT_CLK_DIV};
 
@@ -68,7 +67,7 @@ const REFRESH_SECS: u64 = 1;
 const AP_SSID_PREFIX: &str = "Rustyfarian";
 /// Device name shown on the portal header.
 const DEVICE_NAME: &str = "rgb-clock";
-/// Single source for the AP channel: the hal API takes it in both `ApConfig` and `PortalConfig`.
+/// Single source for the AP channel: consumed by `PortalConfig`.
 const AP_CHANNEL: u8 = 1;
 /// MQTT broker port prefilled in the portal when `MQTT_PORT` is not supplied at build time.
 const DEFAULT_MQTT_PORT: &str = "1883";
@@ -215,6 +214,12 @@ async fn run_pairing(ring: &mut Ring) -> RingMode {
 /// Renders the fixed time through `clock-pure` until another mode is requested.
 async fn run_time(ring: &mut Ring) -> RingMode {
     let (hour, minute, second) = FIXED_TIME;
+    log::info!(
+        "Showing fixed time {:02}:{:02}:{:02} (no time source until M3)",
+        hour,
+        minute,
+        second
+    );
     let leds = clock_pure::render_time(
         hour,
         minute,
@@ -274,7 +279,7 @@ fn on_provisioning_event(event: ProvisioningEvent) {
     log::info!("Provisioning event: {:?}", event);
 }
 
-/// Spins forever. Only for errors that repeat on every boot (bad store geometry, invalid SSID),
+/// Spins forever. Only for errors that repeat on every boot (bad store geometry),
 /// where a reboot loop would add nothing.
 fn halt() -> ! {
     loop {
@@ -452,33 +457,16 @@ async fn main(spawner: Spawner) {
             run_station(spawner, handle).await;
         }
         None => {
-            let mac = interface_mac_address(InterfaceMacAddress::AccessPoint);
-            let mut mac_bytes = [0u8; 6];
-            mac_bytes.copy_from_slice(mac.as_bytes());
-            let ssid = match resolve_softap_ssid(None, AP_SSID_PREFIX, &mac_bytes) {
-                Ok(s) => s,
-                Err(reason) => {
-                    log::error!("SoftAP SSID invalid: {}", reason);
-                    halt();
-                }
-            };
-            let ap_config = ApConfig::open(ssid.as_str())
-                .with_channel(AP_CHANNEL)
-                .with_ap_peripherals(
-                    peripherals.TIMG0,
-                    peripherals.FROM_CPU_INTR0,
-                    peripherals.WIFI,
-                );
-            let softap = match WiFiManager::init_softap_async(ap_config) {
-                Ok(h) => h,
-                Err(e) => {
-                    log::error!("SoftAP init failed: {}", e);
-                    reboot_after_error();
-                }
-            };
             spawner.spawn(ring_task(ring).expect("ring task"));
             RING_MODE.signal(RingMode::Pairing);
-            run_portal(spawner, softap, store, ssid.as_str()).await;
+            run_portal(
+                spawner,
+                peripherals.TIMG0,
+                peripherals.FROM_CPU_INTR0,
+                peripherals.WIFI,
+                store,
+            )
+            .await;
         }
     }
 }
@@ -539,16 +527,17 @@ fn log_ip(stack: embassy_net::Stack<'static>) {
 /// Portal path: serve the captive portal until the session ends, then reboot.
 async fn run_portal(
     spawner: Spawner,
-    softap: SoftApHandle,
+    timg0: TIMG0<'static>,
+    sw_int: FROM_CPU_INTR0<'static>,
+    wifi: WIFI<'static>,
     store: ProvisioningStore<FlashStorage<'static>>,
-    ssid: &str,
 ) {
     let portal_config = PortalConfig {
         ssid_prefix: AP_SSID_PREFIX,
         ssid_override: None,
         ap_password: None,
         channel: AP_CHANNEL,
-        device_name: DEVICE_NAME,
+        device_name: DeviceName::Fixed(DEVICE_NAME),
         firmware_version: env!("CARGO_PKG_VERSION"),
         profile: SchemaProfile::WifiMqttDevice,
         defaults: PortalDefaults {
@@ -562,7 +551,7 @@ async fn run_portal(
     };
     let session = match ProvisioningBuilder::new(portal_config)
         .on_event(on_provisioning_event)
-        .start(spawner, softap, store, Rng::new())
+        .start(spawner, timg0, sw_int, wifi, store, Rng::new())
     {
         Ok(s) => s,
         Err(e) => {
@@ -572,9 +561,11 @@ async fn run_portal(
     };
 
     let ip = session.ap_ip();
+    // `start()` already rejected an invalid SSID; this re-derives it for the log line only.
+    let ssid = resolve_softap_ssid(None, AP_SSID_PREFIX, &session.ap_mac());
     log::info!(
         "Provisioning AP \"{}\" up — open http://{}.{}.{}.{}/ to configure",
-        ssid,
+        ssid.as_ref().map_or("?", |s| s.as_str()),
         ip[0],
         ip[1],
         ip[2],

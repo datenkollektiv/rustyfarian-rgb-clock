@@ -18,22 +18,22 @@ Missing upstream pieces become feature requests to the upstream repository, or c
 
 ## Decisions
 
-|                                                        Decision | Reason                                                                   | Rejected Alternative                 |
-|----------------------------------------------------------------:|:-------------------------------------------------------------------------|:-------------------------------------|
-|                New crate `crates/rustyfarian-esp-hal-rgb-clock` | Mirrors the knob esp-hal tier; IDF firmware stays at root                | Feature flag in the root package     |
-|                         Not a `default-member` of the workspace | Bare `cargo` and IDF recipes stay on the espidf target                   | `exclude` the crate                  |
-|                                      ESP32-C3 first, DIN GPIO 4 | User decision: the C6 board was given away                               | C6 first; both chips at once         |
-|                    `rustyfarian-esp-hal-network` by git rev pin | esp-hal provisioning is only on unreleased main (`bae2dc4`)              | Local path patch; wait for 0.7       |
-|               BOOT (GPIO9) re-entry via `juggler::gate_reentry` | Upstream hook (part 6 of portal fallback); recovery without a cable      | Wait for an esp-hal boot entry point |
-| BOOT polled for 2 s after the prompt (bug 003); no ring cue yet | The hal app reaches the hook ~250 ms after reset, too early for one read | One read like upstream; a 1 s window |
-|           Broker is an IPv4 literal; DNS request filed upstream | esp-hal MQTT has no DNS yet (upstream ADR 019 §2)                        | Contribute DNS before M3             |
-|                                              OTA left out of v1 | esp-hal tier has `EspHalOtaManager` only, no runtime                     | Hand-roll an OTA runtime locally     |
-|                     `clock-pure` becomes `no_std` outside tests | It uses nothing from `std` already                                       | Copy the logic into the hal crate    |
-|                   Follow the knob build pattern (ADR 006 there) | One config, `-Zbuild-std=core,alloc` per recipe, `target/hal`            | Second workspace                     |
-|              Store at `0x9000`/`0x6000` in the default NVS area | Default table has no free flash; survives reflash (ADR 015 §4 deviation) | Dedicated partition (M5)             |
-|            SoftAP SSID computed locally (`resolve_softap_ssid`) | `start()` does not own AP bring-up yet; keeps `Rustyfarian-XXXX`         | Fixed SSID without MAC suffix        |
-|                72 KiB heap, 24 KiB link-time main-stack minimum | Portal `POST /save` peaks near 20.5 KiB on the shared stack              | Smaller heap; unchecked stack        |
-|        Blocking WS2812 transmit inside `critical_section::with` | esp-hal 1.2.2 refills async RMT in `poll`; misses the ~30 µs deadline    | Async driver; RMT driver in RAM      |
+|                                                                            Decision | Reason                                                                                 | Rejected Alternative                 |
+|------------------------------------------------------------------------------------:|:---------------------------------------------------------------------------------------|:-------------------------------------|
+|                                    New crate `crates/rustyfarian-esp-hal-rgb-clock` | Mirrors the knob esp-hal tier; IDF firmware stays at root                              | Feature flag in the root package     |
+|                                             Not a `default-member` of the workspace | Bare `cargo` and IDF recipes stay on the espidf target                                 | `exclude` the crate                  |
+|                                                          ESP32-C3 first, DIN GPIO 4 | User decision: the C6 board was given away                                             | C6 first; both chips at once         |
+|                                        `rustyfarian-esp-hal-network` by git rev pin | esp-hal provisioning is only on unreleased main (`01ff1b9`); the `juggler` pin is gone | Local path patch; wait for 0.7       |
+| BOOT (GPIO9) re-entry via `rustyfarian_esp_hal_network::provisioning::gate_reentry` | Upstream hook (part 6 of portal fallback); recovery without a cable                    | Wait for an esp-hal boot entry point |
+|                     BOOT polled for 2 s after the prompt (bug 003); no ring cue yet | The hal app reaches the hook ~250 ms after reset, too early for one read               | One read like upstream; a 1 s window |
+|                               Broker is an IPv4 literal; DNS request filed upstream | esp-hal MQTT has no DNS yet (upstream ADR 019 §2)                                      | Contribute DNS before M3             |
+|                                                                  OTA left out of v1 | esp-hal tier has `EspHalOtaManager` only, no runtime                                   | Hand-roll an OTA runtime locally     |
+|                                         `clock-pure` becomes `no_std` outside tests | It uses nothing from `std` already                                                     | Copy the logic into the hal crate    |
+|                                       Follow the knob build pattern (ADR 006 there) | One config, `-Zbuild-std=core,alloc` per recipe, `target/hal`                          | Second workspace                     |
+|                                  Store at `0x9000`/`0x6000` in the default NVS area | Default table has no free flash; survives reflash (ADR 015 §4 deviation)               | Dedicated partition (M5)             |
+|                            SoftAP bring-up owned by the network session (`start()`) | Upstream since `6f6286f`; no local `ApConfig` workaround; log SSID from `ap_mac()`       | Local SoftAP bring-up in `main.rs`   |
+|                                    72 KiB heap, 24 KiB link-time main-stack minimum | Portal `POST /save` peaks near 20.5 KiB on the shared stack                            | Smaller heap; unchecked stack        |
+|                            Blocking WS2812 transmit inside `critical_section::with` | esp-hal 1.2.2 refills async RMT in `poll`; misses the ~30 µs deadline                  | Async driver; RMT driver in RAM      |
 
 ## Constraints
 
@@ -80,6 +80,9 @@ Missing upstream pieces become feature requests to the upstream repository, or c
   - Open: the "restarting into normal boot" line is cut off by the reset; cosmetic (`docs/bugs/004-commit-restart-log-line-cut-2026-10-30.md`).
   - Deferred: a static ring cue during the BOOT window; it needs the ring built before `gate_reentry`.
   - Known gap: a wrong Wi-Fi password retries forever with the ring on the rainbow; recover with `just erase-flash`.
+  - 2026-10-30 pin move to `01ff1b9`: re-entry types come from `rustyfarian-esp-hal-network`, the session owns SoftAP bring-up, store read-back fix `7727443` included.
+  - Passed on the C3 2026-10-31: AP `Rustyfarian-C4F4` with portal name `rgb-clock`, pairing ring, BOOT short press keeps the record, 3 s hold erases it, provision/commit/reboot into the face; boot now logs `Showing fixed time 12:34:56`.
+  - Observed: two or three hitches in the rainbow while Wi-Fi connects (radio bring-up shares the one executor); cosmetic, recheck when M3 lands.
 - [ ] M3 — MQTT tick
 - [ ] M4 — C6 arm
 - [ ] M5 — OTA
@@ -103,3 +106,5 @@ Missing upstream pieces become feature requests to the upstream repository, or c
 - 2026-10-30 — Filed bugs 002 (ring), 003 (BOOT window), 004 (cut log line) and an upstream ws2812 request; next session starts with bug 002
 - 2026-10-30 — Bug 003 fixed: 2 s BOOT window; short press, STA rejoin, 3 s erase and re-provisioning verified on the C3; next is the full M2 rerun
 - 2026-10-30 — M2 closed on the bug 003 hardware log (portal, commit, STA, BOOT short press, 3 s erase); next is M3
+- 2026-10-30 — Pin moved from `bae2dc4` to `01ff1b9`; the second `juggler` git pin is dropped; `check-hal`, `clippy-hal`, `build-hal`, `verify` and `build` pass
+- 2026-10-31 — Pin move hardware-validated on the C3 (portal, short press, 3 s erase, commit/reboot); boot logs the fixed time; README states the static face

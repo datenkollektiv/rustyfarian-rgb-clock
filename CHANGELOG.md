@@ -79,8 +79,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Bare-metal `esp-hal` clock for the ESP32-C3 (spec: `docs/features/esp-hal-clock-v1.md`):
   - Crate `crates/rustyfarian-esp-hal-rgb-clock`, built next to the unchanged ESP-IDF firmware.
   - Drives the WS2812 ring on GPIO 4 with a rainbow at boot, then a fixed time (M1, hardware-validated 2026-10-27).
-  - SoftAP captive-portal provisioning and Wi-Fi station mode through `rustyfarian-esp-hal-network`, credentials in raw flash at `0x9000` (M2, awaiting hardware validation).
-  - Boot-time re-entry via the upstream `juggler` hook: a short BOOT (GPIO 9) press after reset reopens the portal and keeps the record (awaiting hardware validation).
+  - SoftAP captive-portal provisioning and Wi-Fi station mode through `rustyfarian-esp-hal-network`, credentials in raw flash at `0x9000` (M2, hardware-validated 2026-10-30); the network session owns SoftAP bring-up since the `01ff1b9` pin (re-validated 2026-10-31).
+  - Boot-time re-entry via the upstream hook re-exported from `rustyfarian_esp_hal_network::provisioning`: a short BOOT (GPIO 9) press after reset reopens the portal and keeps the record (hardware-validated).
   - A 3 s BOOT hold erases the stored record first.
   - `just check-hal`, `clippy-hal`, `build-hal`, `flash-hal`, `verify-hal` and `clean-hal` take a chip argument (`c3` only), run `cargo +esp`, and have no OTA support.
 

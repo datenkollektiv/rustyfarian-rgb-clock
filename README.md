@@ -135,7 +135,8 @@ It needs the `esp` toolchain from `espup`, and the recipes take the chip as an a
 just flash-hal c3
 ```
 
-The ring shows a rainbow at boot and then a fixed time; SoftAP provisioning and Wi-Fi station mode are implemented but not yet validated on hardware.
+The ring shows a rainbow at boot and, once connected, a static 12:34:56 (blue LED 11, green LED 5, red LED 10) — the hands do not move until MQTT time lands.
+SoftAP provisioning, Wi-Fi station mode and BOOT-button portal re-entry are validated on the C3.
 MQTT time and OTA are not in this tier yet.
 The two tiers use different partition tables and provisioning stores, so moving a board between them needs a full `just flash` and re-provisioning.
 Design and milestones: [docs/features/esp-hal-clock-v1.md](docs/features/esp-hal-clock-v1.md).
