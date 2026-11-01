@@ -158,6 +158,13 @@ Symptoms: flickering rainbow, stray green LEDs instead of the hands; Wi-Fi makes
 The same board renders cleanly with the blocking driver inside `critical_section::with`, so it is not the unshifted 3.3 V data line.
 Fix (2026-10-30, bug 002): `Ws2812RmtBlocking` with `set_pixels_slice` inside `critical_section::with`; ~0.4 ms interrupts off per frame, Wi-Fi unaffected.
 
+**Busy-polling the async `TxFuture` inside a critical section garbles the ring once Wi-Fi is up, unless esp-hal's RMT driver runs from RAM.**
+Upstream ws2812 `b2b2022` (`LongFramePolicy::CriticalSection`) did this; on the C3 (2026-11-01) the hands showed briefly, then collapsed to one green LED.
+Bisected: clean with the radio never started, broken with Wi-Fi on with or without modem sleep, clean again with `ESP_HAL_CONFIG_PLACE_RMT_DRIVER_IN_RAM=true`.
+The driver still returns `Ok`, and frame duration does not separate good from bad frames (clean and garbled both took ~840 µs), so only the ring or a logic analyser validates a WS2812 fix.
+Upstream `3a1d3f8` puts its poll loop in RAM (`#[esp_hal::ram]`); with it the async path ran clean with Wi-Fi even without the esp-hal setting.
+The blocking driver inside `critical_section::with` stays clean with the radio and needs no RAM placement; upstream's `set_pixels_slice_masked` is the same pattern and passed too.
+
 **The hal clock sampled BOOT (GPIO9) once at ~250 ms after reset, too early to hit by hand (fixed: 2 s window).**
 The IDF boot leaves ~500 ms before the same single-sample hook, and holding BOOT through reset enters ROM download mode instead.
 Five manual RESET-then-BOOT attempts on 2026-10-30 never registered; the hook needs a sampling window.

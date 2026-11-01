@@ -148,9 +148,9 @@ static RING_MODE: Signal<CriticalSectionRawMutex, RingMode> = Signal::new();
 type Ring = Ws2812RmtBlocking<'static, RMT_BUFFER>;
 
 /// Pushes a frame to the ring; driver errors are logged, never fatal.
-/// Blocking inside a critical section: the RMT refills must meet a ~30 µs deadline (bug 002).
+/// Masked: interrupts (Wi-Fi above all) could delay the RMT refill past its ~30 µs deadline (bug 002).
 fn show(ring: &mut Ring, pixels: &[RGB8; LED_COUNT]) {
-    if let Err(e) = critical_section::with(|_| ring.set_pixels_slice(pixels.as_slice())) {
+    if let Err(e) = ring.set_pixels_slice_masked(pixels.as_slice()) {
         log::warn!("LED update failed: {:?}", e);
     }
 }
