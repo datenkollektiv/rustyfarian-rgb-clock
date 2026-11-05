@@ -1,0 +1,25 @@
+[package]
+name = "clock-app"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license = "MIT"
+description = "Shared async clock app for both tiers - MQTT tick in, WS2812 ring out, no hardware dependencies"
+
+[dependencies]
+clock-pure.workspace = true
+juggler.workspace = true
+# No features: the tier's firmware supplies the time driver (and its tick rate).
+embassy-time = { version = "=0.5.1", default-features = false }
+embassy-futures = "0.1"
+ferriswheel.workspace = true
+rgb.workspace = true
+log.workspace = true
+
+[dev-dependencies]
+# `mock` adds the MockLink/MockMqttClient doubles; the mock driver gives the host a
+# time driver that only moves when a test advances it (it needs a timer queue and a
+# critical-section implementation, both supplied here for the host).
+juggler = { workspace = true, features = ["mock"] }
+embassy-time = { version = "=0.5.1", default-features = false, features = ["mock-driver", "generic-queue-8"] }
+critical-section = { version = "1.1", features = ["std"] }

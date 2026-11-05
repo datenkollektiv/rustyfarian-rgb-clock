@@ -7,11 +7,12 @@
 //! a slot that is not pending verification, so a normally booted image cannot
 //! reboot itself because the broker happens to be down.
 
+#[cfg(not(feature = "unhealthy"))]
+use clock_pure::tick_is_fresh;
 use rustyfarian_esp_idf_network::mqtt::MqttHandle;
-use rustyfarian_esp_idf_network::wifi::WiFiManager;
-use std::sync::atomic::AtomicU32;
 #[cfg(not(feature = "unhealthy"))]
 use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, AtomicU32};
 #[cfg(not(feature = "unhealthy"))]
 use std::time::Duration;
 use std::time::Instant;
@@ -33,27 +34,24 @@ pub struct HealthSignals {
 }
 
 /// The predicate handed to `OtaHandle::run_health_policy`: a fresh tick, MQTT
-/// connected, and an IPv4 lease. The lease is latched, since `get_ip` warns on
-/// every miss and a lease once held counts.
+/// connected, and an IPv4 lease. `ready` is the link's ready flag (associated with an
+/// IP address), set from `WiFiManager::subscribe_ready` because the manager itself
+/// lives on the app thread. The lease is latched: a lease once held counts.
 #[cfg(not(feature = "unhealthy"))]
 pub fn healthy<'a>(
     boot: Instant,
     signals: &'a HealthSignals,
     mqtt: &'a MqttHandle,
-    wifi: &'a WiFiManager,
+    ready: &'a AtomicBool,
 ) -> impl FnMut() -> bool + 'a {
     let mut ipv4 = false;
     move || {
-        if !ipv4 && matches!(wifi.is_connected(), Ok(true)) {
-            ipv4 = matches!(wifi.get_ip(0), Ok(Some(_)));
-        }
-        let last_tick_ms = signals.last_tick_ms.load(Ordering::Relaxed);
-        let tick_fresh = last_tick_ms != 0
-            && boot
-                .elapsed()
-                .as_millis()
-                .saturating_sub(u128::from(last_tick_ms))
-                <= TICK_FRESHNESS.as_millis();
+        ipv4 = ipv4 || ready.load(Ordering::Relaxed);
+        let tick_fresh = tick_is_fresh(
+            u64::try_from(boot.elapsed().as_millis()).unwrap_or(u64::MAX),
+            signals.last_tick_ms.load(Ordering::Relaxed),
+            u64::try_from(TICK_FRESHNESS.as_millis()).unwrap_or(u64::MAX),
+        );
         tick_fresh && mqtt.is_connected() && ipv4
     }
 }
@@ -65,7 +63,7 @@ pub fn healthy<'a>(
     _boot: Instant,
     _signals: &'a HealthSignals,
     _mqtt: &'a MqttHandle,
-    _wifi: &'a WiFiManager,
+    _ready: &'a AtomicBool,
 ) -> impl FnMut() -> bool + 'a {
     || false
 }

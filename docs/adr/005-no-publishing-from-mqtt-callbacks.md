@@ -23,6 +23,8 @@ Callbacks hand work to a dedicated thread over a bounded channel using a non-blo
 
 OTA rejections flow through the `ota-reporter` thread, which publishes `failed { reason }` (`src/ota/mod.rs`).
 
+Since [ADR-006](006-one-clock-app-on-both-tiers.md) the preferred form has no callback at all: the app's receive loop routes `ota/command` to the OTA intake, which only enqueues.
+
 The upstream `rustyfarian-esp-idf-network` 0.5.1 adds a `WrongThread` guard that turns any misuse into a fail-fast error (upstream ADR 017).
 This firmware adopts it once published (ROADMAP, Near term).
 

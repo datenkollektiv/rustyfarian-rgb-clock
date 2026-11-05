@@ -49,14 +49,19 @@ embassy-time = { version = "=0.5.1", default-features = false }
 # the crates.io release that ships it. No `pennant` feature: it would pull a second, git-sourced
 # `pennant` next to the network crate's crates.io one.
 rustyfarian-esp-hal-ws2812 = { git = "https://github.com/datenkollektiv/rustyfarian-ws2812", rev = "878d6b2e8db5587e54761c99b098bc4f7220c170", default-features = false, features = ["unstable"] }
-ferriswheel = "0.7.0"
 rgb = "0.8"
 log = "0.4"
 clock-pure = { path = "../clock-pure" }
-# Provisioning and Wi-Fi, git-pinned to upstream main (unreleased). `default-features = false`
-# keeps the `ws2812` feature off: our own ws2812 dependency above is the only one.
-# `mqtt` joins in M3. Drop the git pin for a crates.io release once one ships.
-rustyfarian-esp-hal-network = { git = "https://github.com/datenkollektiv/rustyfarian-network", rev = "01ff1b9743771250f15f572dc937941a1951d681", default-features = false, features = ["provisioning", "embassy", "rt"] }
+clock-app = { path = "../clock-app" }
+# Provisioning, Wi-Fi and MQTT, TEMPORARILY pinned to a local commit (not on GitHub yet).
+# Same URL and SHA as every other manifest, so the graph has one juggler source
+# (docs/adr/006-one-clock-app-on-both-tiers.md). `default-features = false` keeps the
+# `ws2812` feature off: our own ws2812 dependency above is the only one.
+# Switch back to crates.io once released.
+rustyfarian-esp-hal-network = { git = "file:///Users/fluffi/Projects/rustyfarian/scm-repos/rustyfarian-network", rev = "a53c4344536975f462c5817290bfec879f6103f0", default-features = false, features = ["provisioning", "mqtt", "embassy", "rt"] }
+juggler = { git = "file:///Users/fluffi/Projects/rustyfarian/scm-repos/rustyfarian-network", rev = "a53c4344536975f462c5817290bfec879f6103f0", default-features = false, features = ["wifi", "mqtt"] }
+static_cell = "2.1"
+heapless = "0.9"
 # Same exact pins as the network crate, so the graph keeps one version of each.
 esp-alloc = "=0.11.0"
 # `critical-section` keeps flash writes safe while the radio runs; `embedded-storage`

@@ -63,7 +63,7 @@ verify: partition-check partition-check-tests flash-image-tests tick-topic-tests
     cargo check
     cargo clippy -- -D warnings
     cargo clippy --features unhealthy -- -D warnings
-    cargo test -p clock-pure --target {{ host_target }}
+    cargo test -p clock-pure -p clock-app --target {{ host_target }}
 
 # full pre-commit verification: format, check, lint, test (modifies files — local use only)
 [group("composite")]
@@ -365,29 +365,29 @@ clippy:
 # run clippy on the pure clock-pure crate only (host target — no ESP-IDF toolchain needed)
 [group("quality")]
 clippy-pure:
-    cargo clippy -p clock-pure --all-targets --target {{ host_target }} -- -D warnings
+    cargo clippy -p clock-pure -p clock-app --all-targets --target {{ host_target }} -- -D warnings
 
 # run clock-pure unit tests on host
 [group("quality")]
 test:
-    cargo test -p clock-pure --target {{ host_target }}
+    cargo test -p clock-pure -p clock-app --target {{ host_target }}
 
 # run tests with stdout/stderr visible
 [group("quality")]
 test-verbose:
-    cargo test -p clock-pure --target {{ host_target }} -- --nocapture
+    cargo test -p clock-pure -p clock-app --target {{ host_target }} -- --nocapture
 
 # watch and re-run tests on file changes (requires cargo-watch)
 [group("quality")]
 watch:
-    cargo watch -x "test -p clock-pure --target {{ host_target }}"
+    cargo watch -x "test -p clock-pure -p clock-app --target {{ host_target }}"
 
 # ── Documentation ────────────────────────────────────────────────────────────
 
 # build rustdoc for clock-pure
 [group("docs")]
 doc:
-    cargo doc -p clock-pure --target {{ host_target }} --no-deps
+    cargo doc -p clock-pure -p clock-app --target {{ host_target }} --no-deps
 
 # build and open docs in browser
 [group("docs")]

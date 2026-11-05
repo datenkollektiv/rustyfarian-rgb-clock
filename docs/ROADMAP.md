@@ -29,6 +29,7 @@ timeline
     title Rustyfarian RGB Clock Roadmap
 
     Ready     : esp-hal clock — bare-metal C3 build next to the IDF firmware, M1 and M2 (provisioning, Wi-Fi, BOOT re-entry) hardware-validated, M3 MQTT tick next, OTA deferred to an upstream esp-hal runtime port (feature-doc) (in progress)
+              : One clock app, two tiers — shared async tick app over the upstream parity traits, ladder logic in clock-pure, delivers M3 (ADR-006) (feature-doc) (in progress)
 
     Near term : README refresh — drop led-effects row, add Wokwi prose section
               : Write docs/architecture.md — threading model, MQTT callback, MqttBuilder subscriptions

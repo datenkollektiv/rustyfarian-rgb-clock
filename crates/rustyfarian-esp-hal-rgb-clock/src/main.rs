@@ -1,9 +1,10 @@
 //! Bare-metal (esp-hal) RGB clock for the ESP32-C3.
 //!
-//! M2: boots, logs over UART and drives the 12-LED WS2812 ring (DIN on GPIO4).
+//! Boots, logs over UART and drives the 12-LED WS2812 ring (DIN on GPIO4).
 //! An unprovisioned board opens the SoftAP captive portal (`Rustyfarian-XXXX`) and
-//! reboots after a commit; a provisioned board joins Wi-Fi and shows a fixed time
-//! rendered through `clock-pure`. MQTT time follows in M3.
+//! reboots after a commit; a provisioned board joins Wi-Fi and MQTT and runs the shared
+//! `clock-app`: a rainbow until the first valid tick, then the clock face.
+//! The scheduler is started once, after the BOOT window and the store load (ADR 021).
 //!
 //! Re-entry (upstream `provisioning-reentry-hook-v1`): BOOT (GPIO9) is polled for
 //! `BOOT_WINDOW_MS` after the boot prompt. A short press reopens the portal and keeps
@@ -14,54 +15,46 @@
 #![no_std]
 #![no_main]
 
+use clock_app::{ClockAppConfig, RingPort};
+use core::convert::Infallible;
+use core::net::Ipv4Addr;
+use core::str::FromStr;
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
-use embassy_time::{with_timeout, Duration, Ticker, Timer};
+use embassy_time::{Duration, Ticker, Timer};
 use esp_backtrace as _;
 use esp_hal::{
     gpio::{Input, InputConfig, Level, Pull},
-    peripherals::{FROM_CPU_INTR0, TIMG0, WIFI},
+    peripherals::WIFI,
     rmt::{Rmt, TxChannelConfig, TxChannelCreator},
     rng::Rng,
     time::Rate,
+    timer::timg::TimerGroup,
 };
-use esp_radio::wifi::{Interface, WifiController};
+use esp_radio::wifi::Interface;
 use esp_storage::FlashStorage;
-use ferriswheel::{Direction, PulseEffect, RainbowEffect};
 use rgb::RGB8;
+use rustyfarian_esp_hal_network::mqtt::{MqttBuilder, MqttConfig, MqttRunner, QoS};
 use rustyfarian_esp_hal_network::provisioning::{
     gate_reentry, resolve_softap_ssid, DeviceName, PortalConfig, PortalDefaults,
-    ProvisioningBuilder, ProvisioningEvent, ProvisioningOutcome, ProvisioningStore, ReentryGate,
-    ReentryRequest, SchemaProfile,
+    ProvisioningBuilder, ProvisioningConfig, ProvisioningEvent, ProvisioningOutcome,
+    ProvisioningStore, ReentryGate, ReentryRequest, SchemaProfile,
 };
 use rustyfarian_esp_hal_network::wifi::{
-    AsyncWifiHandle, WiFiConfig, WiFiConfigExt, WiFiManager, WifiPowerSave,
+    link_task, AsyncWifiHandle, WiFiConfig, WiFiConfigExt, WiFiManager, WifiLink, WifiPowerSave,
 };
 use rustyfarian_esp_hal_ws2812::{buffer_size, Ws2812RmtBlocking, RMT_CLK_DIV};
+use static_cell::StaticCell;
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
 const LED_COUNT: usize = clock_pure::LED_COUNT;
 const RMT_BUFFER: usize = buffer_size(LED_COUNT);
 
-const RAINBOW_SPEED: u8 = 3;
-const RAINBOW_BRIGHTNESS: u8 = 30;
-const RAINBOW_FRAME_DELAY_MS: u64 = 30;
-
-// Provisioning ("pairing mode") indicator, same look as the ESP-IDF clock: amber pulse.
-const PROVISION_COLOR: RGB8 = RGB8 {
-    r: 255,
-    g: 120,
-    b: 0,
-};
-const PROVISION_PULSE_SPEED: u8 = 3;
-const PROVISION_MIN_BRIGHTNESS: u8 = 5;
-const PROVISION_MAX_BRIGHTNESS: u8 = 60;
-const PROVISION_FRAME_DELAY_MS: u64 = 30;
-
-// Expected ring: hour blue on LED 11, minute green on LED 5, second red on LED 10 (no overlap).
-const FIXED_TIME: (u8, u8, u8) = (12, 34, 56);
-const REFRESH_SECS: u64 = 1;
+/// Topic carrying the ticks; resolved by `build.rs` (`TICK_TOPIC_OVERRIDE`).
+const TICK_TOPIC: &str = env!("TICK_TOPIC");
+/// Longest string copied into static storage for the MQTT config.
+const MQTT_STR_MAX: usize = 64;
 
 /// SoftAP SSID prefix; the AP MAC's last two bytes are appended as `Rustyfarian-XXXX`.
 const AP_SSID_PREFIX: &str = "Rustyfarian";
@@ -81,8 +74,6 @@ const STORE_SIZE: u32 = 0x6000;
 /// Heap for the Wi-Fi radio buffers and the provisioning session.
 const HEAP_SIZE: usize = 72 * 1024;
 
-const IP_WAIT_SECS: u64 = 10;
-const CONNECT_BACKOFF_SECS: u64 = 5;
 /// Gives the phone time to receive the "saved" page before the radio goes down.
 const COMMIT_FLUSH_MS: u64 = 1500;
 /// Pause before rebooting on a possibly transient error, so the log can be read.
@@ -106,33 +97,14 @@ const PREFILL_MQTT_HOST: &str = match option_env!("MQTT_HOST") {
     Some(v) => v,
     None => "",
 };
-const PREFILL_MQTT_PORT: &str = match option_env!("MQTT_PORT") {
-    Some(v) => {
-        let v = v.trim_ascii();
-        if v.is_empty() {
-            DEFAULT_MQTT_PORT
-        } else {
-            v
-        }
-    }
-    None => DEFAULT_MQTT_PORT,
-};
 const PREFILL_MQTT_USER: &str = match option_env!("MQTT_USER") {
     Some(v) => v,
     None => "",
 };
-// Trimmed like `build.rs` measures it, so a padded id cannot pass its length check.
-const PREFILL_MQTT_CLIENT: &str = match option_env!("MQTT_CLIENT_ID") {
-    Some(v) => {
-        let v = v.trim_ascii();
-        if v.is_empty() {
-            DEVICE_NAME
-        } else {
-            v
-        }
-    }
-    None => DEVICE_NAME,
-};
+// Port and client id fall back through `clock_pure::prefill_or` in `run_portal`: it trims,
+// as `build.rs` does when it guards them, so a padded value cannot pass the guard yet ship padded.
+const PREFILL_MQTT_PORT_RAW: Option<&str> = option_env!("MQTT_PORT");
+const PREFILL_MQTT_CLIENT_RAW: Option<&str> = option_env!("MQTT_CLIENT_ID");
 
 /// What the ring shows; switched between frames by `ring_task`.
 #[derive(Clone, Copy)]
@@ -140,7 +112,8 @@ enum RingMode {
     Rainbow,
     Pairing,
     Connecting,
-    Time,
+    /// One finished frame from the shared clock app.
+    Frame([RGB8; LED_COUNT]),
 }
 
 static RING_MODE: Signal<CriticalSectionRawMutex, RingMode> = Signal::new();
@@ -157,18 +130,14 @@ fn show(ring: &mut Ring, pixels: &[RGB8; LED_COUNT]) {
 
 /// Runs the rainbow until another mode is requested.
 async fn run_rainbow(ring: &mut Ring) -> RingMode {
-    let mut rainbow = match RainbowEffect::new(LED_COUNT).and_then(|r| r.with_speed(RAINBOW_SPEED))
-    {
-        Ok(r) => r
-            .with_brightness(RAINBOW_BRIGHTNESS)
-            .with_direction(Direction::Clockwise),
-        Err(e) => {
-            log::warn!("Rainbow setup failed: {:?}", e);
-            return RING_MODE.wait().await;
-        }
+    let Some(mut rainbow) = clock_app::rainbow_effect() else {
+        log::warn!("Rainbow setup failed");
+        return RING_MODE.wait().await;
     };
     let mut buffer = [RGB8::default(); LED_COUNT];
-    let mut ticker = Ticker::every(Duration::from_millis(RAINBOW_FRAME_DELAY_MS));
+    let mut ticker = Ticker::every(Duration::from_millis(u64::from(
+        clock_pure::RAINBOW_FRAME_DELAY_MS,
+    )));
     loop {
         if let Some(next) = RING_MODE.try_take() {
             return next;
@@ -184,20 +153,14 @@ async fn run_rainbow(ring: &mut Ring) -> RingMode {
 
 /// Runs the amber provisioning pulse until another mode is requested.
 async fn run_pairing(ring: &mut Ring) -> RingMode {
-    let mut pulse = match PulseEffect::new(LED_COUNT).and_then(|p| {
-        p.with_color(PROVISION_COLOR)
-            .with_speed(PROVISION_PULSE_SPEED)
-    }) {
-        Ok(p) => p
-            .with_min_brightness(PROVISION_MIN_BRIGHTNESS)
-            .with_max_brightness(PROVISION_MAX_BRIGHTNESS),
-        Err(e) => {
-            log::warn!("Provisioning pulse setup failed: {:?}", e);
-            return RING_MODE.wait().await;
-        }
+    let Some(mut pulse) = clock_app::pulse_effect() else {
+        log::warn!("Provisioning pulse setup failed");
+        return RING_MODE.wait().await;
     };
     let mut buffer = [RGB8::default(); LED_COUNT];
-    let mut ticker = Ticker::every(Duration::from_millis(PROVISION_FRAME_DELAY_MS));
+    let mut ticker = Ticker::every(Duration::from_millis(u64::from(
+        clock_pure::PROVISION_FRAME_DELAY_MS,
+    )));
     loop {
         if let Some(next) = RING_MODE.try_take() {
             return next;
@@ -211,30 +174,15 @@ async fn run_pairing(ring: &mut Ring) -> RingMode {
     }
 }
 
-/// Renders the fixed time through `clock-pure` until another mode is requested.
-async fn run_time(ring: &mut Ring) -> RingMode {
-    let (hour, minute, second) = FIXED_TIME;
-    log::info!(
-        "Showing fixed time {:02}:{:02}:{:02} (no time source until M3)",
-        hour,
-        minute,
-        second
-    );
-    let leds = clock_pure::render_time(
-        hour,
-        minute,
-        second,
-        &clock_pure::ClockColors::default(),
-        clock_pure::DEFAULT_BRIGHTNESS,
-    );
-    let pixels = leds.map(|(r, g, b)| RGB8::new(r, g, b));
-    let mut ticker = Ticker::every(Duration::from_secs(REFRESH_SECS));
-    loop {
-        if let Some(next) = RING_MODE.try_take() {
-            return next;
-        }
-        show(ring, &pixels);
-        ticker.next().await;
+/// The shared clock app's ring: hands each frame to `ring_task`, which owns the driver.
+struct HalRing;
+
+impl RingPort for HalRing {
+    type Error = Infallible;
+
+    fn show(&mut self, pixels: &[RGB8; LED_COUNT]) -> Result<(), Self::Error> {
+        RING_MODE.signal(RingMode::Frame(*pixels));
+        Ok(())
     }
 }
 
@@ -246,32 +194,38 @@ async fn ring_task(mut ring: Ring) -> ! {
         mode = match mode {
             RingMode::Rainbow | RingMode::Connecting => run_rainbow(&mut ring).await,
             RingMode::Pairing => run_pairing(&mut ring).await,
-            RingMode::Time => run_time(&mut ring).await,
+            RingMode::Frame(pixels) => {
+                show(&mut ring, &pixels);
+                RING_MODE.wait().await
+            }
         };
     }
 }
 
-/// Association loop: connect, wait for the drop, retry after a back-off.
-/// A wrong password retries forever (no portal fallback in the hal tier yet).
-#[embassy_executor::task]
-async fn wifi_task(mut controller: WifiController<'static>) {
-    loop {
-        match controller.connect_async().await {
-            Ok(_) => {
-                log::info!("WiFi associated");
-                if let Ok(info) = controller.wait_for_disconnect_async().await {
-                    log::warn!("WiFi disconnected: {:?}", info.reason);
-                }
-            }
-            Err(e) => log::warn!("WiFi connect failed: {:?}", e),
-        }
-        Timer::after_secs(CONNECT_BACKOFF_SECS).await;
-    }
-}
+static LINK: WifiLink = WifiLink::new();
 
 #[embassy_executor::task]
 async fn net_task(mut runner: embassy_net::Runner<'static, Interface>) -> ! {
     runner.run().await
+}
+
+#[embassy_executor::task]
+async fn mqtt_task(runner: MqttRunner) -> ! {
+    runner.run().await
+}
+
+/// The app's diagnostics hook: free heap on link-up and after the first tick.
+fn diagnostics(when: &str) {
+    log::info!("Free heap at {}: {} bytes", when, esp_alloc::HEAP.free());
+}
+
+/// Copies `value` into static storage; `None` when it does not fit.
+fn static_str<const N: usize>(
+    cell: &'static StaticCell<heapless::String<N>>,
+    value: &str,
+) -> Option<&'static str> {
+    let copy = heapless::String::<N>::try_from(value).ok()?;
+    Some(cell.init(copy).as_str())
 }
 
 /// Lifecycle callback; runs on the portal's HTTP task, so it only logs.
@@ -426,25 +380,18 @@ async fn main(spawner: Spawner) {
         .with_pin(peripherals.GPIO4);
     let ring: Ring = Ws2812RmtBlocking::new(channel);
 
+    // The scheduler starts once per boot, here, after the BOOT window and the store load;
+    // the Wi-Fi and portal entry points below are the `scheduler_running` variants (ADR 021).
+    let timg0 = TimerGroup::new(peripherals.TIMG0);
+    esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
+    spawner.spawn(ring_task(ring).expect("ring task"));
+
     match provisioned {
         Some(cfg) => {
             log::info!("Provisioned (wifi_mqtt) — booting clock");
-            if let Some(mqtt) = cfg.mqtt() {
-                log::info!(
-                    "MQTT target (used from M3): host len={}, port={}, client_id len={}",
-                    mqtt.host().len(),
-                    mqtt.port(),
-                    mqtt.client_id().map_or(0, str::len)
-                );
-            }
-            // The init functions start the scheduler; the ring stays dark until then.
             let wifi_config = WiFiConfig::new(cfg.wifi_ssid(), cfg.wifi_password())
                 .with_power_save(WifiPowerSave::MinModem)
-                .with_peripherals(
-                    peripherals.TIMG0,
-                    peripherals.FROM_CPU_INTR0,
-                    peripherals.WIFI,
-                );
+                .with_wifi_scheduler_running(peripherals.WIFI);
             let handle = match WiFiManager::init_async(wifi_config) {
                 Ok(h) => h,
                 Err(e) => {
@@ -452,83 +399,122 @@ async fn main(spawner: Spawner) {
                     reboot_after_error();
                 }
             };
-            spawner.spawn(ring_task(ring).expect("ring task"));
-            RING_MODE.signal(RingMode::Connecting);
-            run_station(spawner, handle).await;
+            run_station(spawner, handle, &cfg).await;
         }
         None => {
-            spawner.spawn(ring_task(ring).expect("ring task"));
             RING_MODE.signal(RingMode::Pairing);
-            run_portal(
-                spawner,
-                peripherals.TIMG0,
-                peripherals.FROM_CPU_INTR0,
-                peripherals.WIFI,
-                store,
-            )
-            .await;
+            run_portal(spawner, peripherals.WIFI, store).await;
         }
     }
 }
 
-/// Provisioned path: join Wi-Fi, wait for the IP, then show the fixed time.
-async fn run_station(spawner: Spawner, handle: AsyncWifiHandle) {
+/// Parks the task forever; the ring keeps whatever `ring_task` shows.
+async fn park() -> ! {
+    core::future::pending().await
+}
+
+/// Builds the MQTT config from static copies of the provisioned strings.
+///
+/// Logs lengths only and returns `None` when the broker cannot be used: a missing or
+/// oversized field, or a host that is not an IPv4 literal (no DNS on this tier yet).
+fn mqtt_config(cfg: &ProvisioningConfig) -> Option<MqttConfig<'static>> {
+    static HOST: StaticCell<heapless::String<MQTT_STR_MAX>> = StaticCell::new();
+    static CLIENT: StaticCell<heapless::String<MQTT_STR_MAX>> = StaticCell::new();
+    static USER: StaticCell<heapless::String<MQTT_STR_MAX>> = StaticCell::new();
+    static PASS: StaticCell<heapless::String<MQTT_STR_MAX>> = StaticCell::new();
+
+    let Some(mqtt) = cfg.mqtt() else {
+        log::error!("Provisioned record has no MQTT fields");
+        return None;
+    };
+    let host = mqtt.host().trim();
+    log::info!(
+        "MQTT target: host len={}, port={}, client_id len={}",
+        host.len(),
+        mqtt.port(),
+        mqtt.client_id().map_or(0, str::len)
+    );
+    if Ipv4Addr::from_str(host).is_err() {
+        log::error!(
+            "MQTT host (len={}) is not an IPv4 literal; the esp-hal tier has no DNS yet. \
+             Keeping the rainbow - press BOOT after a reset and enter the broker's IPv4 address",
+            host.len()
+        );
+        return None;
+    }
+    let client_id = clock_pure::prefill_or(mqtt.client_id(), DEVICE_NAME);
+    let (Some(host), Some(client_id)) = (static_str(&HOST, host), static_str(&CLIENT, client_id))
+    else {
+        log::error!("MQTT host or client id does not fit {MQTT_STR_MAX} bytes");
+        return None;
+    };
+    let mut config = MqttConfig::new(host, mqtt.port(), client_id);
+    if let Some(user) = mqtt.username() {
+        let Some(user) = static_str(&USER, user) else {
+            log::error!("MQTT username does not fit {MQTT_STR_MAX} bytes");
+            return None;
+        };
+        config = match mqtt.password() {
+            Some(pass) => {
+                let Some(pass) = static_str(&PASS, pass) else {
+                    log::error!("MQTT password does not fit {MQTT_STR_MAX} bytes");
+                    return None;
+                };
+                config.with_auth(user, pass)
+            }
+            None => config.with_username_only(user),
+        };
+    }
+    Some(config)
+}
+
+/// Provisioned path: join Wi-Fi, then hand the link, MQTT and the ring to the clock app.
+///
+/// The ring already shows the rainbow (`ring_task`'s default), which also stays when the
+/// broker config is unusable.
+async fn run_station(spawner: Spawner, handle: AsyncWifiHandle, cfg: &ProvisioningConfig) {
     let AsyncWifiHandle {
         controller,
         stack,
         runner,
     } = handle;
     spawner.spawn(net_task(runner).expect("net task"));
-    spawner.spawn(wifi_task(controller).expect("wifi task"));
+    spawner.spawn(link_task(&LINK, controller, stack).expect("link task"));
 
     log::info!(
         "Free heap after Wi-Fi bring-up: {} of {} bytes",
         esp_alloc::HEAP.free(),
         HEAP_SIZE
     );
-    log::info!("WiFi connecting...");
-    let mut link_up =
-        match with_timeout(Duration::from_secs(IP_WAIT_SECS), stack.wait_config_up()).await {
-            Ok(()) => {
-                log_ip(stack);
-                true
-            }
-            Err(_) => {
-                // M2 only: mirrors the IDF "continue anyway"; M3 needs the link for MQTT.
-                log::error!(
-                    "No IP address after {} s — still retrying in the background",
-                    IP_WAIT_SECS
-                );
-                false
-            }
-        };
-    RING_MODE.signal(RingMode::Time);
 
-    // Keeps the task alive and reports every later DHCP lease; a link that never came
-    // up is not reported as going down.
-    loop {
-        if link_up {
-            stack.wait_config_down().await;
-            log::warn!("WiFi link down");
+    let Some(config) = mqtt_config(cfg) else {
+        park().await
+    };
+    let (mqtt, mqtt_runner) = match MqttBuilder::new(config)
+        .subscribe(TICK_TOPIC, QoS::AtLeastOnce)
+        .build(stack)
+    {
+        Ok(pair) => pair,
+        Err(e) => {
+            log::error!("MQTT build failed: {}", e);
+            park().await
         }
-        stack.wait_config_up().await;
-        log_ip(stack);
-        link_up = true;
-    }
-}
+    };
+    spawner.spawn(mqtt_task(mqtt_runner).expect("mqtt task"));
+    log::info!("Subscribed to tick topic {:?}", TICK_TOPIC);
 
-fn log_ip(stack: embassy_net::Stack<'static>) {
-    match stack.config_v4() {
-        Some(v4) => log::info!("Got IP address: {}", v4.address),
-        None => log::warn!("IP config reported up but has no IPv4 address"),
-    }
+    let app_config = ClockAppConfig {
+        tick_topic: TICK_TOPIC,
+        colors: clock_pure::ClockColors::default(),
+        brightness: clock_pure::DEFAULT_BRIGHTNESS,
+        diagnostics: Some(diagnostics),
+    };
+    clock_app::run(&LINK, &mqtt, &mut HalRing, (), app_config).await
 }
 
 /// Portal path: serve the captive portal until the session ends, then reboot.
 async fn run_portal(
     spawner: Spawner,
-    timg0: TIMG0<'static>,
-    sw_int: FROM_CPU_INTR0<'static>,
     wifi: WIFI<'static>,
     store: ProvisioningStore<FlashStorage<'static>>,
 ) {
@@ -543,15 +529,15 @@ async fn run_portal(
         defaults: PortalDefaults {
             wifi_ssid: PREFILL_WIFI_SSID,
             mqtt_host: PREFILL_MQTT_HOST,
-            mqtt_port: PREFILL_MQTT_PORT,
+            mqtt_port: clock_pure::prefill_or(PREFILL_MQTT_PORT_RAW, DEFAULT_MQTT_PORT),
             mqtt_user: PREFILL_MQTT_USER,
-            mqtt_client: PREFILL_MQTT_CLIENT,
+            mqtt_client: clock_pure::prefill_or(PREFILL_MQTT_CLIENT_RAW, DEVICE_NAME),
             ..PortalDefaults::default()
         },
     };
     let session = match ProvisioningBuilder::new(portal_config)
         .on_event(on_provisioning_event)
-        .start(spawner, timg0, sw_int, wifi, store, Rng::new())
+        .start_scheduler_running(spawner, wifi, store, Rng::new())
     {
         Ok(s) => s,
         Err(e) => {

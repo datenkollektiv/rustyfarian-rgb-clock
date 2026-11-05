@@ -2,24 +2,28 @@ mod ota;
 mod rgb_clock;
 
 use crate::ota::policy::HealthSignals;
-use crate::rgb_clock::RGBClock;
+use crate::rgb_clock::IdfRing;
 use anyhow::Context;
-use esp_idf_hal::gpio::Gpio8;
+use clock_app::{ClockAppConfig, Hooks};
+use clock_pure::{encode_tick_ms, prefill_or, ClockColors, DEFAULT_BRIGHTNESS};
 use esp_idf_hal::modem::Modem;
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
-use esp_idf_svc::mqtt::client::QoS;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
-use rustyfarian_esp_idf_network::mqtt::MqttBuilder;
+use rustyfarian_esp_idf_network::mqtt::{MqttBuilder, QoS};
+use rustyfarian_esp_idf_network::ota::runtime::OtaSubmitter;
 use rustyfarian_esp_idf_network::provisioning::{
-    run_wifi_mqtt_portal, BootConfig, PortalConfig, PortalDefaults, PortalOutcome,
+    run_wifi_mqtt_portal, BootConfig, DeviceName, PortalConfig, PortalDefaults, PortalOutcome,
     ProvisioningEvent, ProvisioningStore, SchemaProfile, WifiMqttBoot, WifiMqttLoadOutcome,
 };
 use rustyfarian_esp_idf_network::wifi::WiFiManager;
 use rustyfarian_esp_idf_ws2812::Ws2812Rmt;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
+
+// Links the generic timer queue that backs `embassy_time::Timer` on the esp-idf time driver.
+use embassy_time_queue_utils as _;
 
 /// Time source topic, `tick` unless a demo OTA image was built with
 /// `OTA_TICK_TOPIC` (see `build.rs`) to fail its health check on purpose.
@@ -34,6 +38,8 @@ const DEVICE_NAME: &str = "rgb-clock";
 /// MQTT broker port prefilled in the portal form when `MQTT_PORT` is not supplied
 /// at build time. The IANA-assigned plaintext-MQTT port.
 const DEFAULT_MQTT_PORT: &str = "1883";
+/// Stack of the `clock-app` thread: the async app, ring writes and the OTA intake hook.
+const CLOCK_APP_STACK_SIZE: usize = 16 * 1024;
 
 fn main() -> anyhow::Result<()> {
     // The OTA health dwell and failure deadline are measured from here: the
@@ -69,7 +75,7 @@ fn main() -> anyhow::Result<()> {
     let clock_driver = Ws2812Rmt::new(peripherals.pins.gpio4)?;
     #[cfg(mcu = "esp32c6")]
     let clock_driver = Ws2812Rmt::new(peripherals.pins.gpio18)?;
-    let clock = Arc::new(Mutex::new(RGBClock::new(clock_driver)?));
+    let clock = IdfRing::new(clock_driver);
 
     // Load the stored Wi-Fi + MQTT config, or fall into provisioning. The network
     // crate's `WifiMqttBoot::load` is modem-free, so on the provisioned path we
@@ -97,7 +103,6 @@ fn main() -> anyhow::Result<()> {
         peripherals.modem,
         sys_loop,
         nvs,
-        peripherals.pins.gpio8,
         clock,
         boot,
         OtaBoot {
@@ -117,17 +122,62 @@ struct OtaBoot {
     booted_at: Instant,
 }
 
+/// Tier hooks of the shared clock app: the OTA health signal and OTA command intake.
+struct IdfHooks {
+    booted_at: Instant,
+    health: Arc<HealthSignals>,
+    submitter: OtaSubmitter,
+}
+
+impl Hooks for IdfHooks {
+    fn tick_rendered(&mut self, _at: embassy_time::Instant) {
+        // Freshness signal for the OTA health policy: when the last tick was
+        // received, parsed and rendered. Never 0, which means "no tick yet".
+        let since_boot = u64::try_from(self.booted_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+        self.health
+            .last_tick_ms
+            .store(encode_tick_ms(since_boot), Ordering::Relaxed);
+    }
+
+    /// Enqueue only (ADR 005): `handle` parses and does `try_send`/atomics, and never
+    /// publishes; rejections are reported by the OTA reporter thread.
+    fn other_message(&mut self, topic: &str, payload: &[u8]) -> bool {
+        self.submitter.handle(topic, payload)
+    }
+}
+
+/// The app's diagnostics hook, run on the `clock-app` thread on link-up and after the
+/// first tick: heap, and the thread's stack high-water mark (bytes on ESP-IDF, see lore).
+fn app_diagnostics(when: &str) {
+    log_heap(when);
+    // SAFETY: a null handle queries the calling task; no other preconditions.
+    let stack_free =
+        unsafe { esp_idf_svc::sys::uxTaskGetStackHighWaterMark(core::ptr::null_mut()) };
+    log::info!("clock-app stack high-water mark {when}: {stack_free} bytes free");
+}
+
+/// Logs free and minimum-ever-free heap, to judge the heap budget from serial.
+fn log_heap(when: &str) {
+    // SAFETY: reads heap statistics; no preconditions.
+    let (free, min_free) = unsafe {
+        (
+            esp_idf_svc::sys::esp_get_free_heap_size(),
+            esp_idf_svc::sys::esp_get_minimum_free_heap_size(),
+        )
+    };
+    log::info!("Heap {when}: free={free} min_free={min_free}");
+}
+
 /// Boots the clock in normal STA mode from a loaded provisioning bundle.
 ///
-/// Steady-state path: rainbow startup animation, Wi-Fi connect, MQTT subscribe,
-/// OTA worker, then the OTA health policy and a park while callbacks drive the
-/// display.
+/// Steady-state path: Wi-Fi (non-blocking, retried forever), MQTT subscribe, OTA
+/// worker, the shared clock app on its own thread (rainbow until the first valid
+/// tick, then the hands), and the OTA health policy on the main thread.
 fn run_clock(
     modem: Modem<'static>,
     sys_loop: EspSystemEventLoop,
     nvs: EspDefaultNvsPartition,
-    onboard_pin: Gpio8,
-    clock: Arc<Mutex<RGBClock<'static>>>,
+    clock: IdfRing,
     boot: WifiMqttBoot,
     ota_boot: OtaBoot,
 ) -> anyhow::Result<()> {
@@ -135,48 +185,36 @@ fn run_clock(
         records: ota_records,
         booted_at,
     } = ota_boot;
-    // Start the startup animation in a background thread
-    let animation_cancel = Arc::new(AtomicBool::new(false));
-    let _animation_handle =
-        rgb_clock::run_startup_animation(Arc::clone(&clock), Arc::clone(&animation_cancel));
-
-    // Onboard RGB LED for Wi-Fi status
-    let mut onboard_led = Ws2812Rmt::new(onboard_pin)?;
+    log_heap("at boot");
 
     // `boot` owns the config strings; `wifi_config()` / `mqtt_config()` borrow them
     // and are valid as long as `boot` lives (it outlives both uses below).
-    let wifi = WiFiManager::new(
+    //
+    // Non-blocking: the ring belongs to the clock app, which shows the rainbow until
+    // the first tick, and the link supervisor reconnects forever. A Wi-Fi failure no
+    // longer reboot-loops after a timeout; the BOOT portal is the recovery path.
+    let wifi = WiFiManager::new_without_led(
         modem,
         sys_loop,
         Some(nvs),
-        boot.wifi_config(),
-        Some(&mut onboard_led),
+        boot.wifi_config().connect_nonblocking(),
     )?;
 
-    // Wait some seconds for an IP address.
-    //
-    // We intentionally continue past a timeout rather than returning an error:
-    // the MQTT client below runs its own auto-reconnecting background event loop
-    // (build() returns immediately and connects asynchronously), so a slow DHCP
-    // lease or a Wi-Fi blip at boot should not abort startup. The clock keeps
-    // showing its rainbow until the first tick arrives once connectivity is up.
-    // A hard failure here would only turn a recoverable, transient delay into a
-    // dark device that needs a manual reboot.
-    if let Some(ip) = wifi.get_ip(10000)? {
-        log::info!("Got IP address: {:?}", ip);
-    } else {
-        log::error!("Failed to get IP address within timeout; continuing — MQTT will connect once Wi-Fi is up");
+    // Link readiness (associated with an IP) for the OTA health predicate: the
+    // manager itself moves to the app thread. The sink must return at once.
+    let wifi_ready = Arc::new(AtomicBool::new(false));
+    let ready_for_sink = Arc::clone(&wifi_ready);
+    // Seed only `true`: the sink may already have stored a newer value from the
+    // reconnect worker, and a stale `false` snapshot must not overwrite it.
+    if wifi.subscribe_ready(move |ready| ready_for_sink.store(ready, Ordering::Relaxed)) {
+        wifi_ready.store(true, Ordering::Relaxed);
     }
 
-    let clock_clone = Arc::clone(&clock);
-    let animation_cancel_clone = Arc::clone(&animation_cancel);
-
-    // OTA: the submitter is captured by the callback below; the worker and
-    // reporter threads start once the MQTT handle exists. The callback only
-    // parses and enqueues, and never publishes (bug 001).
+    // OTA: the submitter is handed to the app's hooks; the worker and reporter
+    // threads start once the MQTT handle exists. Intake only parses and enqueues,
+    // and never publishes (bug 001).
     let (ota_submitter, ota_runtime) = ota::channel(ota::config()?);
     let health = Arc::new(HealthSignals::default());
-    let health_for_callback = Arc::clone(&health);
 
     let mqtt_config = boot.mqtt_config();
     // Lengths only — never the secret values. Makes a rejected (e.g. empty) host
@@ -199,77 +237,49 @@ fn run_clock(
     // `Connected` event — both the initial connection and every automatic
     // reconnect — and a failed SUBSCRIBE is logged and retried on the next
     // reconnect rather than dropped forever.
+    //
+    // No `on_message`: an inbound message goes either to the callback or to the
+    // receive queue, never both. The clock app drains the queue and hands every
+    // non-tick topic (`ota/command`) to `IdfHooks::other_message`.
     let mqtt = MqttBuilder::new(mqtt_config)
         .subscribe(MQTT_TOPIC, QoS::AtLeastOnce)
         .subscribe(ota::COMMAND_TOPIC, QoS::AtLeastOnce)
-        .on_message(move |topic: &str, data: &[u8]| {
-            use rgb_clock::LocalTime;
-
-            if ota_submitter.handle(topic, data) {
-                return;
-            }
-            if topic != MQTT_TOPIC {
-                log::debug!("ignoring message on unexpected topic {topic:?}");
-                return;
-            }
-
-            // Cancel any running startup animation on the first time update.
-            // Relaxed is sufficient: this is a standalone one-bit stop flag that
-            // publishes no other memory, and the shared LED state is serialized by
-            // the clock mutex below — the animation thread re-reads this flag under
-            // that same lock before writing, so no happens-before edge is needed here.
-            animation_cancel_clone.store(true, Ordering::Relaxed);
-
-            match LocalTime::try_from(data) {
-                Ok(time) => {
-                    log::debug!(
-                        "tick [{}] -> {:02}:{:02}:{:02}",
-                        topic,
-                        time.hour,
-                        time.minute,
-                        time.second
-                    );
-                    match clock_clone.lock() {
-                        Ok(mut c) => {
-                            if let Err(e) = c.set_local_time(time) {
-                                log::error!("Failed to set time: {:?}", e);
-                            } else {
-                                // Freshness signal for the OTA health policy: when
-                                // the last tick was received, parsed and rendered.
-                                // Never 0, which means "no tick yet".
-                                let since_boot = booted_at.elapsed().as_millis().max(1);
-                                health_for_callback.last_tick_ms.store(
-                                    u32::try_from(since_boot).unwrap_or(u32::MAX),
-                                    Ordering::Relaxed,
-                                );
-                            }
-                        }
-                        // Don't drop ticks silently: a panic in another clock user
-                        // (e.g. the startup animation thread) poisons this mutex, which
-                        // would otherwise freeze the display forever with no clue in the
-                        // logs as to why time updates stopped.
-                        Err(e) => log::error!("Clock mutex poisoned, skipping tick: {:?}", e),
-                    }
-                }
-                Err(e) => {
-                    log::error!("Failed to parse time: {} (raw: {:02x?})", e, data);
-                }
-            }
-        })
-        .build()?;
+        .build(&wifi)?;
 
     // A firmware that cannot take further updates must not boot silently: a
     // failed spawn of the worker or reporter thread aborts startup, and a
     // pending slot then rolls back.
     let ota = ota_runtime.start(mqtt.clone(), ota_records?)?;
 
+    // The shared clock app runs on its own thread and owns `wifi` (dropping it would
+    // disconnect) and the ring. The health policy stays on the main thread.
+    let hooks = IdfHooks {
+        booted_at,
+        health: Arc::clone(&health),
+        submitter: ota_submitter,
+    };
+    let app_mqtt = mqtt.clone();
+    let mut ring = clock;
+    std::thread::Builder::new()
+        .name("clock-app".into())
+        .stack_size(CLOCK_APP_STACK_SIZE)
+        .spawn(move || {
+            let cfg = ClockAppConfig {
+                tick_topic: MQTT_TOPIC,
+                colors: ClockColors::default(),
+                brightness: DEFAULT_BRIGHTNESS,
+                diagnostics: Some(app_diagnostics),
+            };
+            esp_idf_hal::task::block_on(clock_app::run(&wifi, &app_mqtt, &mut ring, hooks, cfg));
+        })
+        .context("failed to spawn the clock-app thread")?;
+
     log::info!("Setup complete, running the OTA health policy on the main thread");
     // Returns at once unless the running slot is pending verification; otherwise
-    // marks it valid once healthy or rolls back at the deadline. `wifi` stays
-    // owned here: dropping it would disconnect.
+    // marks it valid once healthy or rolls back at the deadline.
     let verdict = ota.run_health_policy(
         booted_at,
-        ota::policy::healthy(booted_at, &health, &mqtt, &wifi),
+        ota::policy::healthy(booted_at, &health, &mqtt, &wifi_ready),
     );
     log::info!(
         "OTA health policy finished: {verdict:?}; stack marks {:?}",
@@ -278,8 +288,7 @@ fn run_clock(
 
     log::info!("Parking main thread");
     // Park the main thread indefinitely — runtime work runs on background threads:
-    // the MQTT event-loop callbacks (time updates), the OTA worker and reporter,
-    // and, during boot, the startup animation thread.
+    // the clock app, the MQTT event loop, and the OTA worker and reporter.
     std::thread::park();
 
     Ok(())
@@ -295,12 +304,11 @@ fn run_provisioning(
     modem: Modem<'static>,
     sys_loop: EspSystemEventLoop,
     nvs: EspDefaultNvsPartition,
-    clock: Arc<Mutex<RGBClock<'static>>>,
+    clock: IdfRing,
 ) -> anyhow::Result<()> {
-    // Amber "pairing mode" pulse on the ring while the portal waits.
-    let pulse_cancel = Arc::new(AtomicBool::new(false));
-    let _pulse_handle =
-        rgb_clock::run_provisioning_animation(Arc::clone(&clock), Arc::clone(&pulse_cancel));
+    // Amber "pairing mode" pulse on the ring while the portal waits. The thread
+    // runs until the restart below.
+    let _pulse_handle = rgb_clock::run_provisioning_animation(clock);
 
     // Keep a clone for the factory-reset erase path before `nvs` is moved.
     let nvs_for_erase = nvs.clone();
@@ -314,7 +322,7 @@ fn run_provisioning(
             ssid_override: None,
             ap_password: None,
             channel: 1,
-            device_name: DEVICE_NAME,
+            device_name: DeviceName::Fixed(DEVICE_NAME),
             firmware_version: ota::RUNNING_VERSION,
             profile: SchemaProfile::WifiMqttDevice,
             // Non-secret prefill so a fresh device shows sensible values instead of
@@ -332,12 +340,9 @@ fn run_provisioning(
                 mqtt_host: option_env!("MQTT_HOST").unwrap_or(""),
                 // Trim + empty-fallback to agree exactly with the `build.rs` guard,
                 // so a padded `MQTT_PORT` can't slip a whitespace-y port into the form.
-                mqtt_port: option_env!("MQTT_PORT")
-                    .map(str::trim)
-                    .filter(|p| !p.is_empty())
-                    .unwrap_or(DEFAULT_MQTT_PORT),
+                mqtt_port: prefill_or(option_env!("MQTT_PORT"), DEFAULT_MQTT_PORT),
                 mqtt_user: option_env!("MQTT_USER").unwrap_or(""),
-                mqtt_client: option_env!("MQTT_CLIENT_ID").unwrap_or(DEVICE_NAME),
+                mqtt_client: prefill_or(option_env!("MQTT_CLIENT_ID"), DEVICE_NAME),
                 ..PortalDefaults::default()
             },
         },
@@ -350,9 +355,6 @@ fn run_provisioning(
 
     let outcome = run_wifi_mqtt_portal(modem, sys_loop, nvs, boot_config)
         .context("provisioning portal failed")?;
-
-    // Stop the amber pulse before restarting.
-    pulse_cancel.store(true, Ordering::Relaxed);
 
     match outcome {
         PortalOutcome::JustProvisioned => {

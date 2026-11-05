@@ -160,6 +160,8 @@ Fields:
 - `minute`: 0-59 (mapped to 12 positions)
 - `second`: 0-59 (mapped to 12 positions)
 
+Both firmwares reject a tick with a value out of range, a missing or extra key, or more than 64 bytes, and keep the current face.
+
 ## Flashing
 
 The 4 MiB flash carries an A/B OTA layout: `ota_0` and `ota_1` at 1.75 MiB each, plus `otadata`, `nvs` and `phy_init`, as defined in `partitions.csv`.

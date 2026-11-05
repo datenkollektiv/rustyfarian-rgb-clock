@@ -1,5 +1,9 @@
 //! Re-runs when the portal prefill variables change and rejects a malformed `MQTT_PORT`.
 //! The values are baked by `option_env!` in `src/main.rs`; mirrors the root `build.rs`.
+//! Also resolves the MQTT tick topic (`TICK_TOPIC_OVERRIDE`) with the root build's validation.
+
+#[path = "../../build_support/tick_topic.rs"]
+mod tick_topic;
 
 /// Longest client id the hal portal stores; longer prefill values are truncated silently.
 const MQTT_CLIENT_ID_MAX_LEN: usize = 23;
@@ -14,6 +18,15 @@ fn main() {
     ] {
         println!("cargo:rerun-if-env-changed={var}");
     }
+
+    println!("cargo:rerun-if-changed=../../build_support/tick_topic.rs");
+    println!("cargo:rerun-if-env-changed=TICK_TOPIC_OVERRIDE");
+    let raw = std::env::var("TICK_TOPIC_OVERRIDE").ok();
+    let tick_topic = tick_topic::resolve(raw.as_deref()).unwrap_or_else(|e| panic!("{e}"));
+    if tick_topic != tick_topic::DEFAULT_TICK_TOPIC {
+        println!("cargo:warning=TICK_TOPIC_OVERRIDE in effect: this image subscribes to \"{tick_topic}\", not \"tick\" (OTA demo only)");
+    }
+    println!("cargo:rustc-env=TICK_TOPIC={tick_topic}");
 
     // Guard and use site agree: main.rs trims the same way and treats empty as the default.
     if let Some(port) = std::env::var("MQTT_PORT")

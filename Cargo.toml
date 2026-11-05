@@ -2,7 +2,7 @@
 # The bare-metal esp-hal crate is a member but not a default build: the root is a
 # real package, so bare `cargo check`/`clippy`/`build` only build the ESP-IDF
 # firmware. Build the hal crate explicitly through the `*-hal` just recipes.
-members = ["crates/clock-pure", "crates/rustyfarian-esp-hal-rgb-clock"]
+members = ["crates/clock-pure", "crates/clock-app", "crates/rustyfarian-esp-hal-rgb-clock"]
 resolver = "2"
 
 [workspace.package]
@@ -14,8 +14,6 @@ edition = "2021"
 anyhow = "1.0"
 log = "0.4"
 rgb = "0.8"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 
 # ESP-IDF dependencies
 esp-idf-hal = "0.47"
@@ -23,6 +21,7 @@ esp-idf-svc = "0.53"
 
 # Local crate (app-specific)
 clock-pure = { path = "crates/clock-pure" }
+clock-app = { path = "crates/clock-app" }
 
 # The rustyfarian-* crate family below shares a common `pennant` (StatusLed)
 # dependency. ws2812 and network must resolve the SAME pennant version, or the
@@ -35,18 +34,20 @@ clock-pure = { path = "crates/clock-pure" }
 ferriswheel = "0.7.0"
 rustyfarian-esp-idf-ws2812 = "0.7.0"
 
-# External crate from rustyfarian-network 0.6.0 (crates.io): the OTA decision core
-# (`decide_offer` with its `Admission` gate, boot `reconcile`, `OtaError::code`) and
-# the OTA consumer runtime (`ota::runtime`: record store, boot reconciliation,
-# worker, reporter, health policy; upstream ADR 018), the MQTT callback guard
-# (upstream ADR 017, our ADR 005 and bug 001), the `wait_committed` stack fix, and
-# MQTT auto-reconnect after a mid-session disconnect (upstream bug 005).
-# Same esp-idf-hal 0.47 / esp-idf-svc 0.53 / pennant 0.7 wave as 0.5.0.
-# Hardware-validated as release candidate 2a3ac3f (docs/features/ota-mvp-v1.md,
-# validation item 11); 0.6.0 differs from it only in doc comments.
+# External crate from rustyfarian-network, pinned TEMPORARILY to a revision that is
+# not on GitHub yet (local file:// URL): it carries the unreleased 0.7 API the
+# one-clock-app work needs (docs/adr/006-one-clock-app-on-both-tiers.md). Every
+# manifest naming rustyfarian-esp-idf-network, rustyfarian-esp-hal-network or juggler
+# must use this exact URL and SHA, so the graph has ONE juggler source. When 0.7 is
+# released, switch both tiers back to crates.io in one change and empty `allow-git`
+# in deny.toml.
 # `default = []`, so an explicit feature list is required; `ota` adds `OtaSession`,
 # the `ota::runtime` consumer runtime and the `juggler::ota` re-exports.
-rustyfarian-esp-idf-network = { version = "0.6.0", default-features = false, features = ["wifi", "mqtt", "provisioning", "ota"] }
+rustyfarian-esp-idf-network = { git = "file:///Users/fluffi/Projects/rustyfarian/scm-repos/rustyfarian-network", rev = "a53c4344536975f462c5817290bfec879f6103f0", default-features = false, features = ["wifi", "mqtt", "provisioning", "ota"] }
+
+# Platform-agnostic juggler traits (`NetworkLink`, `MqttClient`) for the shared clock app,
+# same URL and SHA as above. Tier crates add their own features; `mock` is for host tests.
+juggler = { git = "file:///Users/fluffi/Projects/rustyfarian/scm-repos/rustyfarian-network", rev = "a53c4344536975f462c5817290bfec879f6103f0", default-features = false, features = ["wifi", "mqtt"] }
 
 [package]
 name = "rustyfarian-rgb-clock"
@@ -82,31 +83,16 @@ unhealthy = []
 anyhow.workspace = true
 log.workspace = true
 esp-idf-hal.workspace = true
-esp-idf-svc.workspace = true
+esp-idf-svc = { workspace = true, features = ["embassy-time-driver"] }
 rgb.workspace = true
-serde.workspace = true
-serde_json.workspace = true
 clock-pure.workspace = true
+clock-app.workspace = true
+# The esp-idf-svc time driver needs a timer queue behind `embassy_time::Timer`.
+embassy-time = { version = "=0.5.1", default-features = false }
+embassy-time-queue-utils = { version = "=0.3.2", features = ["generic-queue-16"] }
 rustyfarian-esp-idf-network.workspace = true
 rustyfarian-esp-idf-ws2812.workspace = true
 ferriswheel.workspace = true
-
-# --- Optional Embassy Integration ---
-# esp-idf-svc = { version = "0.52", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }
-
-# If you enable embassy-time-driver, you MUST also add one of:
-
-# a) Standalone Embassy libs ( embassy-time, embassy-sync etc.) with a foreign async runtime:
-# embassy-time = { version = "0.4.0", features = ["generic-queue-8"] } # NOTE: any generic-queue variant will work
-
-# b) With embassy-executor:
-# embassy-executor = { version = "0.7", features = ["executor-thread", "arch-std"] }
-
-# NOTE: if you use embassy-time with embassy-executor you don't need the generic-queue-8 feature
-
-# --- Temporary workaround for embassy-executor < 0.8 ---
-# esp-idf-svc = { version = "0.52", features = ["embassy-time-driver", "embassy-sync"] }
-# critical-section = { version = "1.1", features = ["std"], default-features = false }
 
 [build-dependencies]
 embuild = "0.33"

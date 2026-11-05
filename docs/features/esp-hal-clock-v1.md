@@ -84,6 +84,7 @@ Missing upstream pieces become feature requests to the upstream repository, or c
   - Passed on the C3 2026-10-31: AP `Rustyfarian-C4F4` with portal name `rgb-clock`, pairing ring, BOOT short press keeps the record, 3 s hold erases it, provision/commit/reboot into the face; boot now logs `Showing fixed time 12:34:56`.
   - Observed: two or three hitches in the rainbow while Wi-Fi connects (radio bring-up shares the one executor); cosmetic, recheck when M3 lands.
 - [ ] M3 — MQTT tick
+  - Implemented 2026-11-05 through the shared `clock-app` (ADR-006, `one-clock-app-two-tiers-v1.md`); awaits the C3 hardware run.
 - [ ] M4 — C6 arm
 - [ ] M5 — OTA
 - [ ] Documentation updated (README, AGENTS.md, CHANGELOG)
@@ -108,3 +109,4 @@ Missing upstream pieces become feature requests to the upstream repository, or c
 - 2026-10-30 — M2 closed on the bug 003 hardware log (portal, commit, STA, BOOT short press, 3 s erase); next is M3
 - 2026-10-30 — Pin moved from `bae2dc4` to `01ff1b9`; the second `juggler` git pin is dropped; `check-hal`, `clippy-hal`, `build-hal`, `verify` and `build` pass
 - 2026-10-31 — Pin move hardware-validated on the C3 (portal, short press, 3 s erase, commit/reboot); boot logs the fixed time; README states the static face
+- 2026-11-05 — M3 implemented via the shared clock app; pin moved to `a53c434` (temporary local source); `verify-hal`, `build-hal` green; not yet flashed

@@ -33,6 +33,11 @@ The panic's stack-memory dump contains the freshly submitted Wi-Fi and MQTT secr
 Fix: `CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384` in `sdkconfig.defaults` (applied 2026-09-27, verified on hardware after `just clean-idf`); upstream moved the clone off the caller's stack in network 0.6.0 (bug 002).
 Symbolize a C6 dump with `riscv32-esp-elf-addr2line` from `~/.espressif/tools/esp-clang/*/esp-clang/bin/` against the release ELF; no `just` recipe wraps it yet.
 
+**Registering `MqttBuilder::on_message` on the IDF tier silently starves `MqttHandle::receive()`: every message goes to the callback, and the async queue stays empty.**
+At network `a53c434` the event loop calls `on_message` if one is set and only otherwise pushes to the `receive()` queue (`mqtt/mod.rs`, `Assembled::Message` arm); nothing warns.
+An async app that awaits `receive()` next to a leftover `on_message` (here: the OTA command callback) never sees a tick.
+Fix: drop `on_message` and route every topic from one receive loop (ADR-006 decision 7).
+
 ---
 
 ## Toolchain & Dependencies
@@ -81,6 +86,10 @@ A doc already tracked stays tracked after `git mv`, but one filed and archived b
 Detect: `git status --short --ignored docs` lists such files as `!!`.
 Fix (2026-10-30): the pattern is gone and the local dump it hid moved out of the repo; keep local material outside the worktree, not behind a broad ignore.
 
+**The tier-parity traits (`NetworkLink`, `MqttClient`, `MqttMessage`) live only in `juggler`, so generic clock code needs a direct `juggler` dependency, at the exact source and rev of the network crates.**
+Neither tier crate re-exports them at network `a53c434`; a `juggler` from another source or rev compiles as a different crate, and `WifiLink: NetworkLink` then fails like the `pennant` split above.
+Check: `cargo tree -i juggler` must show exactly one source.
+
 ---
 
 ## OTA & Firmware Update
@@ -125,6 +134,11 @@ Fix: never publish from `on_message`; `try_send` the rejection to the `ota-repor
 Fixed 2026-09-28 (bug 001, verified on the C3).
 The `Connected` event is dispatched under the same lock, so network 0.5.0's startup-message and `on_connect` enqueue share the hazard (unverified): do not enable `on_connect` or a startup topic without re-checking.
 Upstream 0.5.1 (guard in git `511b37f`, ADR 017 in `4ac3d42`) fixes both paths: `MqttHandle` calls from any callback now fail fast with `WrongThread`, and `on_connect` runs on a helper thread — the rule "never publish from `on_message`" still holds.
+
+**`CONFIG_RMT_ISR_IRAM_SAFE=y` stops the IDF clock at boot: `Ws2812Rmt::new` fails with `ESP_ERR_INVALID_ARG`.**
+esp-idf-hal 0.47 `TxChannelDriver` registers a flash-resident `on_trans_done` callback, which ESP-IDF rejects when the RMT ISR is IRAM-safe (`E rmt: … on_trans_done callback not in IRAM`), so `app_main` returns and an OTA image with it never marks itself valid.
+Leave the setting unset: with the default, a 12-LED ring stayed clean through a 17 s OTA download on the C3 (2026-11-01), and the bootloader rolled the broken image back on the next reset.
+To judge ring glitches during OTA, publish identical ticks on a private `OTA_TICK_TOPIC`: a moving sweep looks like flicker by itself, and the shared `tick` publisher flips the image between two valid times.
 
 ---
 
