@@ -39,8 +39,8 @@ unknown-git = "warn"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # TEMPORARY: the IDF firmware resolves rustyfarian-esp-idf-network and juggler from a
 # local file:// git pin (rev a53c434, not on GitHub yet); everything else is crates.io
-# (ws2812 0.7.0). `just deny` checks the root package only, so the esp-hal crate's
-# git pin is not scanned here; see docs/features/esp-hal-clock-v1.md.
+# (ws2812 0.9.0). `just deny` checks the root package only, so the esp-hal crate's
+# network git pin is not scanned here; see docs/features/esp-hal-clock-v1.md.
 # Empty this again when both tiers return to crates.io (network 0.7) — a stale entry
 # emits `unmatched-source` warnings.
 allow-git = ["file:///Users/fluffi/Projects/rustyfarian/scm-repos/rustyfarian-network"]

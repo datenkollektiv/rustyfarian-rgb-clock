@@ -96,6 +96,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- `rustyfarian-ws2812` crates move to 0.9.0 from crates.io on both tiers; the esp-hal crate drops its git pin.
+  - The esp-hal C3 ring calls `set_pixels_slice` instead of the deprecated `set_pixels_slice_masked`; the default `LongFramePolicy::CriticalSection` masks the 12-LED frame the same way.
+  - `pennant` resolves twice (0.9 via ws2812, 0.7 via the network pin) until network adopts the 0.9 wave; neither tier hands the ring to network.
 - OTA firmware downloads have a total deadline through the `rustyfarian-esp-idf-network 0.6.0` OTA runtime (`with_deadline`), so a trickling server no longer keeps the worker busy.
 - The WS2812 ring DIN moved from GPIO 10 to the rustyfarian standard pin: ESP32-C3 GPIO 4, ESP32-C6 GPIO 18 (the `rustyfarian-ws2812` examples and shared pogo-pin rigs).
   - `src/main.rs` selects the pin via the `mcu` cfg from `build.rs`; the Wokwi diagram and docs follow.

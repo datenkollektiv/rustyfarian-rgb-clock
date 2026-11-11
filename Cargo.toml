@@ -29,10 +29,14 @@ clock-app = { path = "crates/clock-app" }
 # fails to accept the ws2812 LED (see docs/project-lore.md "Toolchain &
 # Dependencies"). Bump these crates together and re-verify, rather than
 # upgrading one in isolation.
+# Known split (accepted): ws2812 0.9 brings pennant 0.9, while the network pin below
+# still uses pennant 0.7. It builds because neither tier hands the LED to network
+# (`WiFiManager::new_without_led`, esp-hal ws2812 without `pennant`). Close it when
+# network moves to the ws2812 0.9 wave.
 
-# External crates from rustyfarian-ws2812 — published to crates.io at 0.7.0
-ferriswheel = "0.7.0"
-rustyfarian-esp-idf-ws2812 = "0.7.0"
+# External crates from rustyfarian-ws2812 — published to crates.io at 0.9.0
+ferriswheel = "0.9.0"
+rustyfarian-esp-idf-ws2812 = "0.9.0"
 
 # External crate from rustyfarian-network, pinned TEMPORARILY to a revision that is
 # not on GitHub yet (local file:// URL): it carries the unreleased 0.7 API the

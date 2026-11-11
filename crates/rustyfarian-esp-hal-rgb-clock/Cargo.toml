@@ -45,10 +45,8 @@ esp-backtrace = { version = "=0.20.0", default-features = false, features = ["pa
 embassy-executor = { version = "=0.10.0", default-features = false }
 embassy-time = { version = "=0.5.1", default-features = false }
 # `default-features = false` is mandatory: upstream defaults to esp32c6.
-# Git-pinned to upstream main (unreleased) for `set_pixels_slice_masked`; drop the pin for
-# the crates.io release that ships it. No `pennant` feature: it would pull a second, git-sourced
-# `pennant` next to the network crate's crates.io one.
-rustyfarian-esp-hal-ws2812 = { git = "https://github.com/datenkollektiv/rustyfarian-ws2812", rev = "878d6b2e8db5587e54761c99b098bc4f7220c170", default-features = false, features = ["unstable"] }
+# No `pennant` feature: the clock never hands the ring to the network crate.
+rustyfarian-esp-hal-ws2812 = { version = "0.9.0", default-features = false, features = ["unstable"] }
 rgb = "0.8"
 log = "0.4"
 clock-pure = { path = "../clock-pure" }
