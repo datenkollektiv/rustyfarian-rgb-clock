@@ -5,7 +5,7 @@
 //! MQTT command intake, the update worker and `rolled_back` reporter threads,
 //! the persisted attempt and rollback records, boot reconciliation, the health
 //! policy around our predicate, and every status published on [`STATUS_TOPIC`].
-//! See `docs/features/ota-mvp-v1.md` for the contract.
+//! See `docs/features/archive/ota-mvp-v1.md` for the contract.
 //!
 //! Wire contract on `ota/command` (inbound, bounded to
 //! [`MAX_COMMAND_BYTES`](rustyfarian_esp_idf_network::ota::MAX_COMMAND_BYTES)):

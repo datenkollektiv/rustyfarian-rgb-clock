@@ -9,7 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
-- OTA application layer in `src/ota/` (spec: `docs/features/ota-mvp-v1.md`):
+- OTA application layer in `src/ota/` (spec: `docs/features/archive/ota-mvp-v1.md`):
   - `ota/command` accepts `{"manifest_url": …, "sig": …}` and `{"action": "rollback", "from": "<running version>"}`.
   - The MQTT callback only bounds, parses and enqueues (`try_send` plus an explicit busy flag).
   - A dedicated 16 KiB worker thread fetches the manifest through a bounded `EspHttpConnection` GET and refuses a `target` that is not this chip.
@@ -75,7 +75,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - The suite runs in `just verify`, `just pre-commit`, `just ci` and CI.
 - `just doctor` reports the bash on `PATH` and flags anything below 4, which the partition validator needs; macOS ships 3.2 as `/bin/bash`.
 - CI job `build-c3` builds `idf_c3_rgb_clock` and runs `just image-check` on every push (1,417,120 bytes, 77% of a slot, on 2026-09-27); no Wokwi scenario, no hardware validation.
-- SoftAP captive-portal provisioning for the ESP-IDF firmware replaces the `.env`-baked Wi-Fi and MQTT credentials (spec: `docs/features/wifi-softap-provisioning-v1.md`).
+- SoftAP captive-portal provisioning for the ESP-IDF firmware replaces the `.env`-baked Wi-Fi and MQTT credentials (spec: `docs/features/archive/wifi-softap-provisioning-v1.md`).
 - Bare-metal `esp-hal` clock for the ESP32-C3 (spec: `docs/features/esp-hal-clock-v1.md`):
   - Crate `crates/rustyfarian-esp-hal-rgb-clock`, built next to the unchanged ESP-IDF firmware.
   - Drives the WS2812 ring on GPIO 4 with a rainbow at boot, then a fixed time (M1, hardware-validated 2026-10-27).
@@ -123,6 +123,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- The esp-hal clock waits 50 ms before its provisioning reset, so the last log line is no longer cut off (bug 004).
 - `scripts/build.sh` and `scripts/chip-env.sh` no longer use `${1:?...}` with a `}` in the message, which closed the expansion early and leaked the usage text into the target name.
 - `just monitor` builds its `--port` arguments with `${arr[@]+"${arr[@]}"}`, so an empty array no longer trips `set -u` on bash older than 4.4.
 - The portal's OTA URL field no longer needs a placeholder:

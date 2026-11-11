@@ -30,7 +30,7 @@ use embassy_time_queue_utils as _;
 const MQTT_TOPIC: &str = env!("TICK_TOPIC");
 
 /// SoftAP SSID prefix; the network crate appends the AP MAC's last two bytes as
-/// `Rustyfarian-XXXX`. Also documented in `docs/features/wifi-softap-provisioning-v1.md`.
+/// `Rustyfarian-XXXX`. Also documented in `docs/features/archive/wifi-softap-provisioning-v1.md`.
 const AP_SSID_PREFIX: &str = "Rustyfarian";
 /// Device name shown on the portal `/status` page. Doubles as the MQTT client-id
 /// prefill fallback (the client-id defaults to the device name when unset).
@@ -80,7 +80,7 @@ fn main() -> anyhow::Result<()> {
     // Load the stored Wi-Fi + MQTT config, or fall into provisioning. The network
     // crate's `WifiMqttBoot::load` is modem-free, so on the provisioned path we
     // still own `peripherals.modem` for the STA boot; only the portal path claims
-    // it. See docs/features/wifi-softap-provisioning-v1.md.
+    // it. See docs/features/archive/wifi-softap-provisioning-v1.md.
     let boot = match WifiMqttBoot::load(nvs.clone()).context("failed to read provisioning store")? {
         WifiMqttLoadOutcome::Ready(boot) => boot,
         WifiMqttLoadOutcome::NotProvisioned => {

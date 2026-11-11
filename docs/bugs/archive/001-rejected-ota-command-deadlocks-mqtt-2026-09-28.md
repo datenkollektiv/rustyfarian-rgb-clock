@@ -22,7 +22,7 @@ The network crate already subscribes from a spawned thread (`spawn_subscriber_th
 ## Linked Artefact
 - `src/ota/mod.rs` — `OtaSubmitter::submit` and `OtaSubmitter::reject`
 - `rustyfarian-esp-idf-network 0.5.0` — `src/mqtt/mod.rs`, builder event loop dispatching `EventPayload::Received`
-- `docs/features/ota-mvp-v1.md` — hardware item 8 add-on check (malformed command)
+- `docs/features/archive/ota-mvp-v1.md` — hardware item 8 add-on check (malformed command)
 - `docs/project-lore.md` — "OTA & Firmware Update"
 
 ## Reproduction Confidence
@@ -64,7 +64,7 @@ An already-valid slot never rolls back, so nothing reboots the board.
 ## Owner
 
 ## Links
-- `docs/features/ota-mvp-v1.md` — hardware sequence item 8 add-on check marked failed
+- `docs/features/archive/ota-mvp-v1.md` — hardware sequence item 8 add-on check marked failed
 - `docs/project-lore.md` — entry "`try_publish` from inside an `on_message` callback deadlocks the MQTT client for good"
 
 ## Session Log

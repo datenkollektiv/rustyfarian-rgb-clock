@@ -12,7 +12,7 @@ fn main() {
 
     // Wi-Fi and MQTT credentials are no longer baked into the firmware — they are
     // provisioned at runtime via the SoftAP captive portal and stored in NVS.
-    // See docs/features/wifi-softap-provisioning-v1.md.
+    // See docs/features/archive/wifi-softap-provisioning-v1.md.
     //
     // The optional, non-secret portal prefill values (read via `option_env!` in
     // main.rs) are baked at compile time, so rebuild when they change in `.env`.

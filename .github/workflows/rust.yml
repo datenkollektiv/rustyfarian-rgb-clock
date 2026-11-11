@@ -89,7 +89,7 @@ jobs:
         run: cp .cargo/config.toml.dist .cargo/config.toml
 
       # Credentials are provisioned at runtime (SoftAP portal), not baked in, so
-      # no .env is needed to build. See docs/features/wifi-softap-provisioning-v1.md.
+      # no .env is needed to build. See docs/features/archive/wifi-softap-provisioning-v1.md.
 
       - name: Configure UART console for Wokwi
         run: echo "CONFIG_ESP_CONSOLE_UART_DEFAULT=y" >> sdkconfig.defaults

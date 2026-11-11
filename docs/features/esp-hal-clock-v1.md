@@ -77,7 +77,7 @@ Missing upstream pieces become feature requests to the upstream repository, or c
   - Passed: clean rainbow and steady hands (blue LED 11, green LED 5, red LED 10), Wi-Fi unaffected by the blocking ring transmit.
   - Passed: BOOT short press → portal with the record kept, then STA rejoin; 3 s hold → record erased, re-provisioned, STA join.
   - Fixed on the way: garbled ring (`docs/bugs/archive/002-esp-hal-async-rmt-garbles-ring-2026-10-30.md`) and BOOT window (`docs/bugs/archive/003-esp-hal-boot-reentry-window-too-short-2026-10-30.md`).
-  - Open: the "restarting into normal boot" line is cut off by the reset; cosmetic (`docs/bugs/004-commit-restart-log-line-cut-2026-10-30.md`).
+  - Fixed 2026-11-11: the "restarting into normal boot" line was cut off by the reset; a 50 ms drain keeps it (`docs/bugs/archive/004-commit-restart-log-line-cut-2026-10-30.md`), check on the next C3 run.
   - Deferred: a static ring cue during the BOOT window; it needs the ring built before `gate_reentry`.
   - Known gap: a wrong Wi-Fi password retries forever with the ring on the rainbow; recover with `just erase-flash`.
   - 2026-10-30 pin move to `01ff1b9`: re-entry types come from `rustyfarian-esp-hal-network`, the session owns SoftAP bring-up, store read-back fix `7727443` included.

@@ -1,6 +1,6 @@
 # Roadmap
 
-*Last updated: October 2026*
+*Last updated: November 2026*
 
 A May 2026 deep-dive review confirmed the near-term tier is complete and repositioned the project.
 The rgb-clock is the **integration test fixture** for the rustyfarian workspace.
@@ -34,7 +34,7 @@ timeline
     Near term : README refresh — drop led-effects row, add Wokwi prose section
               : Write docs/architecture.md — threading model, MQTT callback, MqttBuilder subscriptions
               : Write docs/wokwi-simulation.md — what is modelled, CI usage, limits
-              : OTA MVP demo — MQTT-triggered A/B update with rollback (feature-doc)
+              : OTA failure injection on hardware — power pulls during download and before restart, forced health deadline, update during pending verify (docs/features/archive/ota-mvp-v1.md Validation)
               : Investigate WS2812 phantom / vanishing hands — 3.3 V DIN into 5 V strips, boot self-test (docs/issues/led-display-signal-debugging.md)
               : Adopt the upstream Wi-Fi portal fallback — a wrong or changed Wi-Fi password must not need a cable (rustyfarian-network docs/features/wifi-portal-fallback-v1.md)
               : Adopt upstream graceful MQTT/Wi-Fi shutdown before planned OTA restarts (rustyfarian-network docs/features/graceful-shutdown-before-restart-v1.md)
@@ -45,11 +45,13 @@ timeline
               : Audit clock-pure boundary tests — 0, 11, 12, 23, 59 edge cases
               : Migrate clock-pure Rgb tuple to RGB8 type from rgb crate (after boundary test audit)
               : Expand Wokwi CI matrix — additional scenarios per new upstream features
+              : Wokwi scenarios drive the provisioning portal — an unprovisioned boot hides the clock face (archived wifi-softap-provisioning-v1)
 
     Long term : Workspace meta-doc — all four repos, roles, and coordination rules
               : Async and Embassy migration (after network ships async MQTT)
               : Cross-project adoption validation
               : Raw RGB data via MQTT (testing vehicle)
+              : Provisioning pulse tuning — amber shade, brightness range and period of the ring pulse
 ```
 
 See [testing-strategy.md](testing-strategy.md) for the full three-tier implementation plan.

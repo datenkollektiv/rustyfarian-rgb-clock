@@ -2,7 +2,7 @@
 
 Run this after any change to the OTA application layer (`src/ota/`), the partition layout, or the network crate, and before a release.
 It pushes real updates over MQTT to one device and checks every status on `ota/status`.
-Record results in the PR or in the validation section of [`docs/features/ota-mvp-v1.md`](../features/ota-mvp-v1.md), not here.
+Record results in the PR, not here.
 
 ## Prerequisites
 

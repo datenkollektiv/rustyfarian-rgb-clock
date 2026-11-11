@@ -104,7 +104,7 @@ Wi-Fi and MQTT credentials are provisioned at runtime via a SoftAP captive porta
 A `.env` is optional: it only supplies **non-secret** defaults that pre-fill the portal form (see `.env.example`); passwords are never set there.
 On first boot (or after `just erase-flash`) the clock ring pulses amber and the device hosts an open `Rustyfarian-XXXX` access point.
 Connect to it, open the captive portal, and submit your Wi-Fi + MQTT details.
-See [docs/features/wifi-softap-provisioning-v1.md](docs/features/wifi-softap-provisioning-v1.md) for details.
+See [docs/features/archive/wifi-softap-provisioning-v1.md](docs/features/archive/wifi-softap-provisioning-v1.md) for details.
 Run `just setup-cargo-config` to create `.cargo/config.toml` from the template.
 
 ### Reprovisioning & recovery
@@ -123,7 +123,7 @@ This requires host tooling and a cable today; a cable-free BOOT-button trigger i
 The provisioning AP is **open (no password)** by default — a conscious tradeoff for local, physical,
 first-boot setup, not a convenience default.
 It is reachable only while the device is unprovisioned and is never exposed over the joined network.
-See the [threat model](docs/features/wifi-softap-provisioning-v1.md#security-stance--threat-model) for the
+See the [threat model](docs/features/archive/wifi-softap-provisioning-v1.md#security-stance--threat-model) for the
 accepted residual risk and the WPA2 hardening path.
 
 ## Bare-metal esp-hal clock (ESP32-C3)
@@ -178,7 +178,7 @@ just monitor
 - A partition layout change needs a full erase with `just flash-baseline`, which also clears `nvs`, so the device must be re-provisioned afterwards.
 
 Pass the target for the C3 (`just flash idf_c3_rgb_clock`).
-The reasoning behind each safeguard is in the [OTA feature doc](docs/features/ota-mvp-v1.md#decisions).
+The reasoning behind each safeguard is in the [OTA feature doc](docs/features/archive/ota-mvp-v1.md#decisions).
 
 ## OTA updates
 
@@ -203,7 +203,7 @@ The offered version must be newer than the running one, and a version that was r
 This is a LAN demo: images are served over plain HTTP and integrity rests on SHA-256 alone.
 
 - Testing on hardware: [OTA hardware test runbook](docs/runbooks/ota-hardware-test.md)
-- Design, wire contract and status codes: [OTA feature doc](docs/features/ota-mvp-v1.md)
+- Design, wire contract and status codes: [OTA feature doc](docs/features/archive/ota-mvp-v1.md)
 
 ## Dependencies
 

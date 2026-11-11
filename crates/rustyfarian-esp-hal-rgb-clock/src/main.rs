@@ -76,6 +76,8 @@ const HEAP_SIZE: usize = 72 * 1024;
 
 /// Gives the phone time to receive the "saved" page before the radio goes down.
 const COMMIT_FLUSH_MS: u64 = 1500;
+/// Lets the UART drain the last log line before a software reset (bug 004); ~11 ms at 115200 baud.
+const LOG_DRAIN_MS: u64 = 50;
 /// Pause before rebooting on a possibly transient error, so the log can be read.
 const REBOOT_DELAY_MS: u32 = 3000;
 /// Holding BOOT this long answers `FactoryReset`; a shorter press answers `Portal`.
@@ -581,5 +583,6 @@ async fn run_portal(
         }
         _ => log::warn!("Provisioning ended without a commit — restarting"),
     }
+    Timer::after_millis(LOG_DRAIN_MS).await;
     esp_hal::system::software_reset()
 }
