@@ -90,6 +90,11 @@ Fix (2026-10-30): the pattern is gone and the local dump it hid moved out of the
 Neither tier crate re-exports them at network `a53c434`; a `juggler` from another source or rev compiles as a different crate, and `WifiLink: NetworkLink` then fails like the `pennant` split above.
 Check: `cargo tree -i juggler` must show exactly one source.
 
+**`ubuntu-latest` is Ubuntu 26.04, whose `libxml2.so.16` breaks ESP-IDF v5.3.3's prebuilt `esp-clang` 16 (needs `libxml2.so.2`), so every `esp-idf-sys` CI build dies after about 2 minutes.**
+The CI log shows only cargo's exit code 101; host jobs (tests, clippy, fmt, audit) stay green, and macOS builds of the same commit pass.
+It first hit the `v0.3.0` release commit, because the 12 `device-name` commits since 2026-10-27 never ran in CI.
+Fix: `runs-on: ubuntu-24.04` for the two firmware jobs in `rust.yml`, as rustyfarian-network `06c5bd2`; unpin only with an ESP-IDF upgrade.
+
 ---
 
 ## OTA & Firmware Update

@@ -63,7 +63,11 @@ jobs:
   # ===========================================================================
   build:
     name: Build & Clippy (ESP32-C6)
-    runs-on: ubuntu-latest
+    # Pinned to 24.04: `ubuntu-latest` moved to 26.04 (libxml2.so.16), where ESP-IDF
+    # v5.3.3's prebuilt esp-clang 16 fails to load libxml2.so.2 during
+    # `idf_tools.py install`, so every esp-idf-sys build dies (CI breakage 2026-11-12;
+    # same fix as rustyfarian-network 06c5bd2). Unpin with an ESP-IDF upgrade.
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -130,7 +134,11 @@ jobs:
   # ===========================================================================
   build-c3:
     name: Build & Image check (ESP32-C3)
-    runs-on: ubuntu-latest
+    # Pinned to 24.04: `ubuntu-latest` moved to 26.04 (libxml2.so.16), where ESP-IDF
+    # v5.3.3's prebuilt esp-clang 16 fails to load libxml2.so.2 during
+    # `idf_tools.py install`, so every esp-idf-sys build dies (CI breakage 2026-11-12;
+    # same fix as rustyfarian-network 06c5bd2). Unpin with an ESP-IDF upgrade.
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
