@@ -64,6 +64,11 @@ jobs:
   build:
     name: Build & Clippy (ESP32-C6)
     runs-on: ubuntu-latest
+    # The runner preinstalls Clang 20, 21 and 22, and bindgen's clang-sys loads the
+    # newest libclang it finds; libclang 22 breaks the ESP-IDF v6.1 bindings for
+    # esp-idf-hal 0.47. Pin bindgen to the libclang 21 installed below.
+    env:
+      LIBCLANG_PATH: /usr/lib/llvm-21/lib
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -76,7 +81,7 @@ jobs:
       # ESP-IDF >= v5.4 ships libclang in a separate esp-clang-libs package that
       # esp-idf-sys does not install, so bindgen needs the system libclang.
       - name: Install libclang for bindgen
-        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+        run: sudo apt-get update && sudo apt-get install -y libclang-21-dev
 
       - name: Install pinned nightly toolchain
         run: |
@@ -92,10 +97,7 @@ jobs:
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
         with:
-          key: esp32c6-${{ hashFiles('.cargo/config.toml.dist', 'sdkconfig.defaults') }}
-
-      - name: Setup cargo config
-        run: cp .cargo/config.toml.dist .cargo/config.toml
+          key: esp32c6-${{ hashFiles('.cargo/config.toml', 'sdkconfig.defaults') }}
 
       # Credentials are provisioned at runtime (SoftAP portal), not baked in, so
       # no .env is needed to build. See docs/features/archive/wifi-softap-provisioning-v1.md.
@@ -140,6 +142,11 @@ jobs:
   build-c3:
     name: Build & Image check (ESP32-C3)
     runs-on: ubuntu-latest
+    # The runner preinstalls Clang 20, 21 and 22, and bindgen's clang-sys loads the
+    # newest libclang it finds; libclang 22 breaks the ESP-IDF v6.1 bindings for
+    # esp-idf-hal 0.47. Pin bindgen to the libclang 21 installed below.
+    env:
+      LIBCLANG_PATH: /usr/lib/llvm-21/lib
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -152,7 +159,7 @@ jobs:
       # ESP-IDF >= v5.4 ships libclang in a separate esp-clang-libs package that
       # esp-idf-sys does not install, so bindgen needs the system libclang.
       - name: Install libclang for bindgen
-        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+        run: sudo apt-get update && sudo apt-get install -y libclang-21-dev
 
       - name: Install pinned nightly toolchain
         run: |
@@ -166,10 +173,7 @@ jobs:
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
         with:
-          key: esp32c3-${{ hashFiles('.cargo/config.toml.dist', 'sdkconfig.defaults') }}
-
-      - name: Setup cargo config
-        run: cp .cargo/config.toml.dist .cargo/config.toml
+          key: esp32c3-${{ hashFiles('.cargo/config.toml', 'sdkconfig.defaults') }}
 
       - name: Build ESP32-C3
         run: just build idf_c3_rgb_clock

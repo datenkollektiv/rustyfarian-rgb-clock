@@ -105,7 +105,6 @@ A `.env` is optional: it only supplies **non-secret** defaults that pre-fill the
 On first boot (or after `just erase-flash`) the clock ring pulses amber and the device hosts an open `Rustyfarian-XXXX` access point.
 Connect to it, open the captive portal, and submit your Wi-Fi + MQTT details.
 See [docs/features/archive/wifi-softap-provisioning-v1.md](docs/features/archive/wifi-softap-provisioning-v1.md) for details.
-Run `just setup-cargo-config` to create `.cargo/config.toml` from the template.
 
 ### Reprovisioning & recovery
 
