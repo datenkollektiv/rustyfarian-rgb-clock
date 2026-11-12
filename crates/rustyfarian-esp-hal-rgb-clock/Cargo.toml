@@ -51,13 +51,12 @@ rgb = "0.8"
 log = "0.4"
 clock-pure = { path = "../clock-pure" }
 clock-app = { path = "../clock-app" }
-# Provisioning, Wi-Fi and MQTT, TEMPORARILY pinned to a local commit (not on GitHub yet).
-# Same URL and SHA as every other manifest, so the graph has one juggler source
-# (docs/adr/006-one-clock-app-on-both-tiers.md). `default-features = false` keeps the
-# `ws2812` feature off: our own ws2812 dependency above is the only one.
-# Switch back to crates.io once released.
-rustyfarian-esp-hal-network = { git = "file:///Users/fluffi/Projects/rustyfarian/scm-repos/rustyfarian-network", rev = "a53c4344536975f462c5817290bfec879f6103f0", default-features = false, features = ["provisioning", "mqtt", "embassy", "rt"] }
-juggler = { git = "file:///Users/fluffi/Projects/rustyfarian/scm-repos/rustyfarian-network", rev = "a53c4344536975f462c5817290bfec879f6103f0", default-features = false, features = ["wifi", "mqtt"] }
+# Provisioning, Wi-Fi and MQTT from crates.io. Same version as every other manifest,
+# so the graph has one juggler (docs/adr/006-one-clock-app-on-both-tiers.md).
+# `default-features = false` keeps the `ws2812` feature off: our own ws2812
+# dependency above is the only one.
+rustyfarian-esp-hal-network = { version = "0.7.0", default-features = false, features = ["provisioning", "mqtt", "embassy", "rt"] }
+juggler = { version = "0.7.0", default-features = false, features = ["wifi", "mqtt"] }
 static_cell = "2.1"
 heapless = "0.9"
 # Same exact pins as the network crate, so the graph keeps one version of each.

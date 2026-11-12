@@ -83,6 +83,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Boot-time re-entry via the upstream hook re-exported from `rustyfarian_esp_hal_network::provisioning`: a short BOOT (GPIO 9) press after reset reopens the portal and keeps the record (hardware-validated).
   - A 3 s BOOT hold erases the stored record first.
   - `just check-hal`, `clippy-hal`, `build-hal`, `flash-hal`, `verify-hal` and `clean-hal` take a chip argument (`c3` only), run `cargo +esp`, and have no OTA support.
+- One clock app on both tiers (ADR-006, spec: `docs/features/one-clock-app-two-tiers-v1.md`):
+  - Crate `crates/clock-app` drives the ring from MQTT ticks over the `juggler` `NetworkLink` and `MqttClient` traits, host-tested against the `juggler` mocks.
+  - Tick parsing lives in `clock-pure`: a tick needs exactly `hour`, `minute` and `second` in range, else the ring keeps its rainbow or last frame.
+  - The esp-hal clock shows live ticks instead of the fixed 12:34:56 face (M3).
+  - The IDF clock leaves the rainbow on the first valid tick, retries Wi-Fi forever instead of rebooting after 30 s, and its onboard status LED stays dark.
+  - IDF OTA commands arrive through the app's receive loop, since an `on_message` callback would starve `MqttHandle::receive()`.
 
 ### Validated
 
@@ -98,7 +104,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - `rustyfarian-ws2812` crates move to 0.9.0 from crates.io on both tiers; the esp-hal crate drops its git pin.
   - The esp-hal C3 ring calls `set_pixels_slice` instead of the deprecated `set_pixels_slice_masked`; the default `LongFramePolicy::CriticalSection` masks the 12-LED frame the same way.
-  - `pennant` resolves twice (0.9 via ws2812, 0.7 via the network pin) until network adopts the 0.9 wave; neither tier hands the ring to network.
+  - `pennant` resolves twice (0.9 via ws2812, 0.7 via network 0.7) until network adopts the 0.9 wave; neither tier hands the ring to network.
+- `rustyfarian-esp-idf-network`, `rustyfarian-esp-hal-network` and `juggler` move to 0.7.0 from crates.io on both tiers; `deny.toml` `allow-git` is empty again.
+  - Station TX power defaults to `Low` (about 8.5 dBm) on both tiers: down from `Medium` (13 dBm) on IDF, up from esp-radio's 5 dBm on esp-hal.
+  - The Wi-Fi country defaults to `WORLD` (channels 1–11, 802.11d on; esp-hal was `CN`); an AP on channel 12 or 13 is found only by passive scan.
+  - Both tiers join the strongest AP (`ApSelection::Strongest`); esp-hal now scans all channels first.
+  - IDF MQTT runs on a persistent 8 KiB `mqtt-net` thread instead of a 12 KiB helper thread per connect.
+  - Both tiers log the upstream `[wifi]` and `[mqtt]` lines; `link up` includes the BSSID and RSSI at `info`.
 - OTA firmware downloads have a total deadline through the `rustyfarian-esp-idf-network 0.6.0` OTA runtime (`with_deadline`), so a trickling server no longer keeps the worker busy.
 - The WS2812 ring DIN moved from GPIO 10 to the rustyfarian standard pin: ESP32-C3 GPIO 4, ESP32-C6 GPIO 18 (the `rustyfarian-ws2812` examples and shared pogo-pin rigs).
   - `src/main.rs` selects the pin via the `mcu` cfg from `build.rs`; the Wokwi diagram and docs follow.

@@ -27,7 +27,7 @@ Delivers esp-hal clock M3 by construction.
 - `clock-app` compiles under `no_std`: `core`, `heapless`, `embassy-time`, `embassy-futures`.
 - Nothing publishes or subscribes from an IDF MQTT callback or from the receive loop (ADR-005).
 - One `juggler` source in the graph; a second source splits the traits (like the `pennant` trap).
-- The `a53c434` pin is a temporary local `file://` git source; repin to GitHub before committing.
+- Both tiers resolve network 0.7.0 from crates.io (released 2026-11-12, contains `a53c434`).
 
 ## Open Questions
 
@@ -68,6 +68,7 @@ Delivers esp-hal clock M3 by construction.
 - [x] Design approved
 - [x] Tick parsing in `clock-pure` with host tests
 - [x] Pins moved to `a53c434` on both tiers
+- [x] Network 0.7.0 from crates.io on both tiers
 - [x] `clock-app` crate with host tests
 - [x] Shared app on IDF (tick via `receive`)
 - [x] Shared app on esp-hal (M3)
@@ -79,3 +80,4 @@ Delivers esp-hal clock M3 by construction.
 - 2026-11-04 — Feature doc created via /feature dialog; ADR-006 accepted
 - 2026-11-05 — Analysis workflow answered Q1 and Q2 and recorded the upstream gaps; plan approved
 - 2026-11-05 — Steps 1–6 implemented; `verify`, `verify-hal`, IDF C3/C6, unhealthy and hal builds, `deny` green; not yet flashed
+- 2026-11-12 — Both tiers on network 0.7.0 from crates.io; `verify`, `clippy-hal`, `deny` green; not yet flashed

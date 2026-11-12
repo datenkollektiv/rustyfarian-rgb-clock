@@ -213,9 +213,9 @@ All of them are consumed from crates.io; this repository has no git dependencies
 
 | Crate                         | Version               | Repository                                                                   | Description                               |
 |:------------------------------|:----------------------|:-----------------------------------------------------------------------------|:------------------------------------------|
-| `ferriswheel`                 | 0.7.0                 | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | RGB ring effects (rainbow animations)     |
-| `rustyfarian-esp-idf-ws2812`  | 0.7.0                 | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | ESP-IDF RMT driver for WS2812             |
-| `rustyfarian-esp-idf-network` | 0.6.0                 | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | Wi-Fi, MQTT, SoftAP provisioning, and OTA |
+| `ferriswheel`                 | 0.9.0                 | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | RGB ring effects (rainbow animations)     |
+| `rustyfarian-esp-idf-ws2812`  | 0.9.0                 | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | ESP-IDF RMT driver for WS2812             |
+| `rustyfarian-esp-idf-network` | 0.7.0                 | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | Wi-Fi, MQTT, SoftAP provisioning, and OTA |
 
 The separate `rustyfarian-esp-idf-wifi` and `rustyfarian-esp-idf-mqtt` crates were consolidated upstream into `rustyfarian-esp-idf-network`.
 This firmware enables its features explicitly (`wifi`, `mqtt`, `provisioning`, `ota`).

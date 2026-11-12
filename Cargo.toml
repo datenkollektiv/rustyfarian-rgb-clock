@@ -29,7 +29,7 @@ clock-app = { path = "crates/clock-app" }
 # fails to accept the ws2812 LED (see docs/project-lore.md "Toolchain &
 # Dependencies"). Bump these crates together and re-verify, rather than
 # upgrading one in isolation.
-# Known split (accepted): ws2812 0.9 brings pennant 0.9, while the network pin below
+# Known split (accepted): ws2812 0.9 brings pennant 0.9, while network 0.7 below
 # still uses pennant 0.7. It builds because neither tier hands the LED to network
 # (`WiFiManager::new_without_led`, esp-hal ws2812 without `pennant`). Close it when
 # network moves to the ws2812 0.9 wave.
@@ -38,20 +38,17 @@ clock-app = { path = "crates/clock-app" }
 ferriswheel = "0.9.0"
 rustyfarian-esp-idf-ws2812 = "0.9.0"
 
-# External crate from rustyfarian-network, pinned TEMPORARILY to a revision that is
-# not on GitHub yet (local file:// URL): it carries the unreleased 0.7 API the
-# one-clock-app work needs (docs/adr/006-one-clock-app-on-both-tiers.md). Every
-# manifest naming rustyfarian-esp-idf-network, rustyfarian-esp-hal-network or juggler
-# must use this exact URL and SHA, so the graph has ONE juggler source. When 0.7 is
-# released, switch both tiers back to crates.io in one change and empty `allow-git`
-# in deny.toml.
+# External crates from rustyfarian-network — published to crates.io at 0.7.0.
+# Every manifest naming rustyfarian-esp-idf-network, rustyfarian-esp-hal-network or
+# juggler must use the same version, so the graph has ONE juggler and the parity
+# traits stay one type (docs/adr/006-one-clock-app-on-both-tiers.md).
 # `default = []`, so an explicit feature list is required; `ota` adds `OtaSession`,
 # the `ota::runtime` consumer runtime and the `juggler::ota` re-exports.
-rustyfarian-esp-idf-network = { git = "file:///Users/fluffi/Projects/rustyfarian/scm-repos/rustyfarian-network", rev = "a53c4344536975f462c5817290bfec879f6103f0", default-features = false, features = ["wifi", "mqtt", "provisioning", "ota"] }
+rustyfarian-esp-idf-network = { version = "0.7.0", default-features = false, features = ["wifi", "mqtt", "provisioning", "ota"] }
 
 # Platform-agnostic juggler traits (`NetworkLink`, `MqttClient`) for the shared clock app,
-# same URL and SHA as above. Tier crates add their own features; `mock` is for host tests.
-juggler = { git = "file:///Users/fluffi/Projects/rustyfarian/scm-repos/rustyfarian-network", rev = "a53c4344536975f462c5817290bfec879f6103f0", default-features = false, features = ["wifi", "mqtt"] }
+# same version as above. Tier crates add their own features; `mock` is for host tests.
+juggler = { version = "0.7.0", default-features = false, features = ["wifi", "mqtt"] }
 
 [package]
 name = "rustyfarian-rgb-clock"
