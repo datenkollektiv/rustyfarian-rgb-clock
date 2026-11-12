@@ -32,7 +32,6 @@ External crates (git dependencies, path-patched locally via `.cargo/config.toml`
 First-time setup:
 
 ```sh
-just setup-cargo-config
 cp .env.example .env   # fill in WIFI_SSID, WIFI_PASS, MQTT_HOST, MQTT_PORT, MQTT_CLIENT_ID
 ```
 
@@ -103,7 +102,7 @@ In `clock-pure`, return `Option` or a custom error type — `anyhow` must not ap
 
 **`clock-pure` must stay `no_std`:** no `Vec`, no `String`, no heap allocation. `Copy` types, arrays, and `core::` APIs only.
 
-**Local dev patches:** `.cargo/config.toml` (gitignored) contains `[patch]` sections pointing to sibling directories. Comment out all patches to build against published GitHub refs.
+**Local dev patches:** `.cargo/config.toml` is committed. To develop against sibling working trees, add a `[patch.crates-io]` section to it locally and never commit that section.
 
 **Never:** comment out failing tests, add `#[ignore]` without a documented reason, or declare a task done without running `just verify`.
 

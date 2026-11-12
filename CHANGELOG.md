@@ -9,7 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
-- ESP-IDF `v5.3.3` → `v5.5.6`, so the firmware builds on Ubuntu 26.04 hosts: its `esp-clang` 19 links LLVM statically and no longer needs `libxml2.so.2`.
+- ESP-IDF `v5.3.3` → `v6.1`, as in rustyfarian-ws2812, so the firmware builds on Ubuntu 26.04 hosts: its `esp-clang` no longer needs `libxml2.so.2`.
+- The firmware declares the managed `espressif/mqtt` component (pinned to 1.1.0), because ESP-IDF v6 moved esp-mqtt out of the IDF tree and `rustyfarian-esp-idf-network` 0.7.0 does not declare it yet.
+- `.cargo/config.toml` is now committed (was the `.cargo/config.toml.dist` template), and `just setup-cargo-config` is gone; it carries the ESP-IDF pin, so a fresh clone builds without a setup step.
+- ESP-IDF v6.1 filled the C6 OTA slot to 99%, so the firmware now trims flash: `sdkconfig.defaults` drops the MQTT SSL/WebSocket transports, the HTTPS client, the CA bundle, the TLS server, the DS peripheral, 802.1X/OWE/SAE-PK/SoftAP-SAE Wi-Fi, SHA-512, PKCS#7 and unused mbedTLS curves, and std is built without its `backtrace` feature. The C6 image is 88% of the slot (199 KiB headroom).
+- `sdkconfig.defaults` pins `CONFIG_ESPTOOLPY_FLASHSIZE_2MB=y`, because the flash size selects the C6 MMU page size that bootloaders already in the field were built with.
 - CI firmware jobs run on `ubuntu-latest` again and install `libclang-dev`, because bindgen no longer gets `libclang` from `esp-clang`.
 
 ## [0.3.0] - 2026-11-12

@@ -73,7 +73,7 @@ Without `set dotenv-load`, the portal prefill (`WIFI_SSID`, `MQTT_*`) falls back
 Fix: use a Shell Script run configuration that calls `just build` (login shell `/bin/zsh -l`), stored in the git-ignored `.idea/runConfigurations/` — `.run/` is tracked in this public repo.
 "Sync Cargo changes" cannot be routed through `just`: it runs `cargo check --target riscv32imac-esp-espidf --all-targets` itself and fails with `CMake Error: The source ".../.espressif/esp-idf/..." does not match the source ".../.embuild/espressif/esp-idf/..."` when a `just` build already configured `./target`.
 That failed build script also leaves no `esp-idf-sys` bindings, so RustRover flags `esp_idf_svc::sys` items with E0425 although `just verify` passes.
-Fix: set `[build] target-dir = "target/ide"` in the git-ignored `.cargo/config.toml`, which every non-`just` cargo caller (RustRover, rust-analyzer, bare `cargo`) reads; the justfile always exports `CARGO_TARGET_DIR`, which overrides it.
+Fix: uncomment `[build] target-dir = "target/ide"` in `.cargo/config.toml` locally and never commit it (CI's bare `cargo build` expects `./target`); every non-`just` cargo caller (RustRover, rust-analyzer, bare `cargo`) reads it, and the justfile always exports `CARGO_TARGET_DIR`, which overrides it.
 Never move this folder: the ESP-IDF CMake cache stores absolute paths, so delete it and let the next sync rebuild it.
 
 **The esp-hal wave (`esp-hal 1.2.2`, `esp-sync 0.3.0`, `esp-rom-sys`) does not compile on the repo's IDF pin `nightly-2026-01-26`: E0658 on `cfg_select`.**
@@ -94,7 +94,7 @@ Check: `cargo tree -i juggler` must show exactly one source.
 The CI log shows only cargo's exit code 101; host jobs (tests, clippy, fmt, audit) stay green, and macOS builds of the same commit pass.
 It first hit the `v0.3.0` release commit, because the 12 `device-name` commits since 2026-10-27 never ran in CI.
 Fix: `runs-on: ubuntu-24.04` for the two firmware jobs in `rust.yml`, as rustyfarian-network `06c5bd2`; unpin only with an ESP-IDF upgrade.
-Resolved 2026-11-12: ESP-IDF v5.5.6 (see the next entry); the firmware jobs run on `ubuntu-latest` again, with an explicit `libclang-dev` install for bindgen.
+Resolved 2026-11-12: ESP-IDF v5.5.6, then v6.1 the same day (see the next entry); the firmware jobs run on `ubuntu-latest` again, with an explicit libclang 21 install for bindgen (see the libclang 22 entry below).
 
 **ESP-IDF v5.4 and later run on Ubuntu 26.04, because their `esp-clang` (18.1.2 in v5.4.3, 19.1.2 in v5.5.5) links LLVM statically and needs no `libxml2`.**
 In v5.3.3 the `libxml2.so.2` dependency comes from the shared `libLLVM-16.so`; there `clang --version` fails, while 18 and 19 run, as tested in an `ubuntu:26.04` container on 2026-11-12.
@@ -103,13 +103,30 @@ From v5.4, `libclang` is in a separate `esp-clang-libs` package that `esp-idf-sy
 
 **Changing `ESP_IDF_VERSION` leaves the old CMake tree in `esp-idf-sys`'s `out/build`, so a reused `target/` fails with `include could not find requested file: .../esp-idf/<old version>/tools/cmake/toolchain-<chip>.cmake`.**
 The `esp-idf-sys-<hash>` directory name ignores the IDF version, and `CMakeCache.txt` still points at the old toolchain file and gcc (`esp-13.2.0_20240530` for v5.3).
-CI hit it on the v5.5.6 bump (2026-11-12) because `Swatinem/rust-cache` keys on `Cargo.lock` and rustc, not on `.cargo/config.toml.dist`.
-Fix: the firmware jobs key the cache on `hashFiles('.cargo/config.toml.dist', 'sdkconfig.defaults')`; locally, run `just clean-idf` after any IDF version or `sdkconfig.defaults` change.
+CI hit it on the v5.5.6 bump (2026-11-12) because `Swatinem/rust-cache` keys on `Cargo.lock` and rustc, not on the ESP-IDF pin in `.cargo/config.toml`.
+Fix: the firmware jobs key the cache on `hashFiles('.cargo/config.toml', 'sdkconfig.defaults')`; locally, run `just clean-idf` after any IDF version or `sdkconfig.defaults` change.
+
+**ESP-IDF v6.1 grew the C6 image from 1,789,488 (v5.5.6) to 1,834,432 bytes, 576 bytes short of the 0x1c0000 OTA slot; std's `backtrace` feature was the cheapest big win.**
+`libespidf.map` in `esp-idf-sys`'s `out/build` is the final application's link map (it lists the Rust rlibs), so `python -m esp_idf_size --archives` from the IDF Python env attributes flash per archive.
+Its `libesp_stdio.a` row (~60 KiB `.rodata.esp_stdio_register.str1.4`) is the program-wide merged string pool, not stdio.
+`build-std-features = ["panic-unwind"]` (no `backtrace`) saved 152 KiB (gimli, addr2line, miniz_oxide, rustc-demangle); the Kconfig trims in `sdkconfig.defaults` saved 47 KiB more (2026-11-12).
+`CONFIG_MBEDTLS_RSA_C=n` does not build on v6.1: TF-PSA-Crypto's default `crypto_config.h` enables `PSA_WANT_ALG_RSA_PSS` unconditionally, and ESP-IDF's `esp_config.h` only gates OAEP.
+`CONFIG_MBEDTLS_TLS_SERVER=n` is silently ignored, because the role is the choice `MBEDTLS_TLS_MODE`; set `CONFIG_MBEDTLS_TLS_CLIENT_ONLY=y`.
 
 **On Docker Desktop for Apple Silicon, GNU tar 1.35 in an amd64 `ubuntu:26.04` container cannot extract the `esp-clang` archives: `Cannot mkdir`/`Cannot create symlink`: `Function not implemented`.**
 The amd64 emulation lacks a syscall that this tar uses, and the error appears on `overlayfs` and on `tmpfs` alike, so the result looks like a toolchain failure even though it isn't one.
 Fix: install `python3` in the container and extract with `tarfile.open(...).extractall(filter='fully_trusted')`.
 Bind mounts of repo paths fail with `mounts denied`, so pipe the probe script in with `docker run -i ... sh -s < script.sh`.
+
+**On GitHub's `ubuntu-latest` (26.04) runner, bindgen uses libclang 22, not the libclang 21 that `apt-get install libclang-dev` adds, and the ESP-IDF v6.1 bindings then break `esp-idf-hal 0.47` with 16 errors (`spi_transaction_t__bindgen_ty_1`, `rmt_encoder_t` has only `_address`).**
+The runner image preinstalls Clang 20, 21 and 22, and `clang-sys` loads the newest libclang it finds.
+In the same `just act` container, the build passed with only `libclang-dev` and failed once `clang-20 clang-21 clang-22` were installed (2026-11-13).
+A plain `catthehacker/ubuntu:act-26.04` image hides this: it ships no extra Clang, so `.github/act/Dockerfile` installs the runner's set.
+Fix: the firmware jobs install `libclang-21-dev` and set `LIBCLANG_PATH: /usr/lib/llvm-21/lib`; drop the pin once bindgen output works with libclang 22.
+
+**With the macOS RAM disk mounted, the ESP-IDF v6.1 build lacks the `espressif/mqtt` extra component, so `just verify` fails in `rustyfarian-esp-idf-network` (`esp_mqtt_client_stop` not found, no `esp_idf_svc::mqtt`).**
+The same commit builds in `./target`, where `out/build/espressif__mqtt` exists; the root crate's `[[package.metadata.esp-idf-sys.extra_components]]` apparently goes unread when target-dir lies outside the workspace (observed 2026-11-13, mechanism unconfirmed).
+Workaround: `just --set ramdisk /nonexistent verify` builds in `./target` with `workspace` tools.
 
 ---
 

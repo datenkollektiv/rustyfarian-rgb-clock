@@ -96,9 +96,9 @@ fi
 
 # --- Project configuration ------------------------------------------------
 if [ -f "$ROOT_DIR/.cargo/config.toml" ]; then
-    status "cargo config" "ok" ".cargo/config.toml present (local dev override)"
+    status "cargo config" "ok" ".cargo/config.toml present"
 else
-    status "cargo config" "MISSING" "run: just setup-cargo-config  (copies .cargo/config.toml.dist)"
+    status "cargo config" "MISSING" "run: git checkout .cargo/config.toml  (committed)"
 fi
 
 if [ -f "$ROOT_DIR/.env" ]; then

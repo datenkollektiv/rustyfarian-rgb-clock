@@ -27,7 +27,7 @@ export CARGO_TARGET_DIR := idf_dir
 # Only when the target-dir lives on the RAM disk, install the heavy ESP-IDF tools to
 # the shared global ~/.espressif so they don't land on (and fill) the RAM disk. Off
 # the RAM disk — including CI, which never mounts it — keep the default per-project
-# .embuild ("workspace"), matching `.cargo/config.toml.dist`. This is why "global"
+# .embuild ("workspace"), matching `.cargo/config.toml`. This is why "global"
 # must NOT live in the committed config: CI would install globally and break
 # esp-idf-sys's ninja/compiler discovery.
 export ESP_IDF_TOOLS_INSTALL_DIR := if ramdisk_mounted == "true" { "global" } else { "workspace" }
@@ -425,16 +425,11 @@ clean-idf:
     rm -rf {{ idf_dir }}/riscv32imac-esp-espidf/*/build/esp-idf-sys-*/
     rm -rf {{ idf_dir }}/riscv32imc-esp-espidf/*/build/esp-idf-sys-*/
 
-# set up local cargo config from the template
-[group("maintenance")]
-setup-cargo-config:
-    cp .cargo/config.toml.dist .cargo/config.toml
-
 # simulate CI dependency resolution locally (CI always generates a fresh lock without path patches)
 [group("maintenance")]
-lock-ci: setup-cargo-config
+lock-ci:
+    @git diff --quiet -- .cargo/config.toml || { echo "revert local .cargo/config.toml edits (e.g. [patch] sections) first" >&2; exit 1; }
     cargo update -p pennant -p bunting -p ferriswheel -p rustyfarian-esp-idf-ws2812 -p rustyfarian-esp-idf-network
-    @echo "Done. Run 'just setup-cargo-config' and restore your dev patches when finished."
 
 # install required development tooling (cargo-deny, cargo-audit, cargo-watch)
 [group("maintenance")]
@@ -454,6 +449,17 @@ ramdisk action:
     @scripts/ramdisk.sh "{{ action }}"
 
 # ── Local CI (act) ───────────────────────────────────────────────────────────
+
+# Runs natively (arm64 on Apple Silicon): amd64 emulation breaks GNU tar on 26.04.
+# Tokens are dropped: the actions are public and act fails on a stale GH_TOKEN.
+# No cache server: a restored target/ would hide toolchain changes, as a cache miss on CI would not.
+# `build` ends in a failed "Upload firmware artifact": act 0.2.97's artifact server rejects upload-artifact@v7 (`mime_type`).
+
+# reproduce a rust.yml job in an Ubuntu 26.04 (`ubuntu-latest`) runner image with rustup and the runner's Clang set (requires Docker + act; e.g. build-c3, build)
+[group("local-ci")]
+act job="build-c3":
+    docker build -t rgb-clock-act:26.04 .github/act
+    env -u GH_TOKEN -u GITHUB_TOKEN act -W .github/workflows/rust.yml -j {{ job }} -P ubuntu-latest=rgb-clock-act:26.04 --pull=false --no-cache-server --artifact-server-path tmp/act-artifacts
 
 # run CI workflow locally via act (requires Docker + act)
 [group("local-ci")]

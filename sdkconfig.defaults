@@ -27,6 +27,36 @@ CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 CONFIG_LOG_MAXIMUM_LEVEL_INFO=y
 
+# Size trims: ESP-IDF v6.1 grew the C6 image to 99% of its OTA slot. The clock uses
+# plain mqtt:// and http:// only (the network crate's OTA downloader rejects https://),
+# so drop TLS transports, the CA bundle, the TLS server and 802.1X/OWE Wi-Fi.
+# esp-idf-svc and esp_http_client still link the TLS client, so it stays.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=n
+CONFIG_MBEDTLS_TLS_CLIENT_ONLY=y
+CONFIG_ESP_TLS_USE_DS_PERIPHERAL=n
+CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=n
+CONFIG_MQTT_TRANSPORT_SSL=n
+CONFIG_MQTT_TRANSPORT_WEBSOCKET=n
+CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT=n
+CONFIG_ESP_WIFI_ENABLE_WPA3_OWE_STA=n
+# WPA2/WPA3-Personal needs AES/CCM/CMAC, SHA-256 and P-256 only; the SoftAP portal is
+# open, so SAE-PK and SoftAP SAE are unused as well.
+CONFIG_ESP_WIFI_ENABLE_SAE_PK=n
+CONFIG_ESP_WIFI_SOFTAP_SAE_SUPPORT=n
+CONFIG_MBEDTLS_PKCS7_C=n
+CONFIG_MBEDTLS_SHA512_C=n
+CONFIG_MBEDTLS_ECP_DP_SECP384R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP521R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP256K1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP256R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP384R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP512R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_CURVE25519_ENABLED=n
+
+# Never change the flash size: on the C6 it selects the MMU page size (2 MB → 32 KiB),
+# and bootloaders already in the field, which OTA never replaces, are built with it.
+CONFIG_ESPTOOLPY_FLASHSIZE_2MB=y
+
 # A/B OTA rollback. The bootloader marks a newly activated slot PENDING_VERIFY and
 # reverts to the previous slot on the next boot unless the running app calls
 # esp_ota_mark_app_valid_cancel_rollback(). Only takes effect in a bootloader built

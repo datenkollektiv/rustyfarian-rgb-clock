@@ -62,6 +62,12 @@ repository = "https://github.com/datenkollektiv/rustyfarian-rgb-clock"
 keywords = ["esp32", "led", "clock", "ws2812", "mqtt"]
 categories = ["embedded", "hardware-support"]
 
+# ESP-IDF v6 moved esp-mqtt out of the IDF tree into the managed component `espressif/mqtt`.
+# rustyfarian-esp-idf-network 0.7.0 does not declare it yet, so the firmware does.
+# Pinned exactly: a new esp-mqtt should arrive as a reviewed bump, not with a CI run.
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/mqtt", version = "1.1.0" }
+
 [[bin]]
 name = "rustyfarian-rgb-clock"
 harness = false # do not use the built-in cargo test harness -> resolve rust-analyzer errors
