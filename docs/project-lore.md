@@ -94,6 +94,22 @@ Check: `cargo tree -i juggler` must show exactly one source.
 The CI log shows only cargo's exit code 101; host jobs (tests, clippy, fmt, audit) stay green, and macOS builds of the same commit pass.
 It first hit the `v0.3.0` release commit, because the 12 `device-name` commits since 2026-10-27 never ran in CI.
 Fix: `runs-on: ubuntu-24.04` for the two firmware jobs in `rust.yml`, as rustyfarian-network `06c5bd2`; unpin only with an ESP-IDF upgrade.
+Resolved 2026-11-12: ESP-IDF v5.5.6 (see the next entry); the firmware jobs run on `ubuntu-latest` again, with an explicit `libclang-dev` install for bindgen.
+
+**ESP-IDF v5.4 and later run on Ubuntu 26.04, because their `esp-clang` (18.1.2 in v5.4.3, 19.1.2 in v5.5.5) links LLVM statically and needs no `libxml2`.**
+In v5.3.3 the `libxml2.so.2` dependency comes from the shared `libLLVM-16.so`; there `clang --version` fails, while 18 and 19 run, as tested in an `ubuntu:26.04` container on 2026-11-12.
+`esp-idf-sys 0.38.1` always installs `esp-clang` for bindgen and has no opt-out, so the only fix in the repo is changing `ESP_IDF_VERSION` (the crate itself defaults to v5.5.5).
+From v5.4, `libclang` is in a separate `esp-clang-libs` package that `esp-idf-sys` never installs, so bindgen falls back to `LIBCLANG_PATH`, the espup symlink, or the system `libclang`.
+
+**Changing `ESP_IDF_VERSION` leaves the old CMake tree in `esp-idf-sys`'s `out/build`, so a reused `target/` fails with `include could not find requested file: .../esp-idf/<old version>/tools/cmake/toolchain-<chip>.cmake`.**
+The `esp-idf-sys-<hash>` directory name ignores the IDF version, and `CMakeCache.txt` still points at the old toolchain file and gcc (`esp-13.2.0_20240530` for v5.3).
+CI hit it on the v5.5.6 bump (2026-11-12) because `Swatinem/rust-cache` keys on `Cargo.lock` and rustc, not on `.cargo/config.toml.dist`.
+Fix: the firmware jobs key the cache on `hashFiles('.cargo/config.toml.dist', 'sdkconfig.defaults')`; locally, run `just clean-idf` after any IDF version or `sdkconfig.defaults` change.
+
+**On Docker Desktop for Apple Silicon, GNU tar 1.35 in an amd64 `ubuntu:26.04` container cannot extract the `esp-clang` archives: `Cannot mkdir`/`Cannot create symlink`: `Function not implemented`.**
+The amd64 emulation lacks a syscall that this tar uses, and the error appears on `overlayfs` and on `tmpfs` alike, so the result looks like a toolchain failure even though it isn't one.
+Fix: install `python3` in the container and extract with `tarfile.open(...).extractall(filter='fully_trusted')`.
+Bind mounts of repo paths fail with `mounts denied`, so pipe the probe script in with `docker run -i ... sh -s < script.sh`.
 
 ---
 
@@ -118,7 +134,7 @@ Fix: `scripts/flash.sh` now builds first and passes `--bootloader` plus `--ignor
 A second `esp-idf-sys-*` build directory makes that resolution ambiguous and is a hard error — run `just clean-idf`.
 
 **App partition offsets must be 64 KiB aligned; 4 KiB alignment is only enough for data partitions.**
-`gen_esp32part.py` rejects a misaligned `app` partition, and the v5.3.3 bootloader maps flash in 64 KiB MMU pages.
+`gen_esp32part.py` rejects a misaligned `app` partition, even though the C6 maps flash in 32 KiB MMU pages at the default 2 MB flash size (`CONFIG_MMU_PAGE_SIZE=0x8000`; the C3 uses 64 KiB).
 Fix: start the first app slot at the next `0x10000` boundary and accept the padding, rather than packing app partitions tightly behind `otadata`/`phy_init`.
 
 **`uxTaskGetStackHighWaterMark` returns bytes on ESP-IDF, not the words the FreeRTOS docs and the generated binding comment describe.**

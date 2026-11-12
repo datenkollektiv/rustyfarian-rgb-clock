@@ -63,11 +63,7 @@ jobs:
   # ===========================================================================
   build:
     name: Build & Clippy (ESP32-C6)
-    # Pinned to 24.04: `ubuntu-latest` moved to 26.04 (libxml2.so.16), where ESP-IDF
-    # v5.3.3's prebuilt esp-clang 16 fails to load libxml2.so.2 during
-    # `idf_tools.py install`, so every esp-idf-sys build dies (CI breakage 2026-11-12;
-    # same fix as rustyfarian-network 06c5bd2). Unpin with an ESP-IDF upgrade.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -76,6 +72,11 @@ jobs:
         run: |
           curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
           cargo binstall -y ldproxy espflash
+
+      # ESP-IDF >= v5.4 ships libclang in a separate esp-clang-libs package that
+      # esp-idf-sys does not install, so bindgen needs the system libclang.
+      - name: Install libclang for bindgen
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
 
       - name: Install pinned nightly toolchain
         run: |
@@ -86,8 +87,12 @@ jobs:
       - name: Setup just
         uses: extractions/setup-just@v4
 
+      # The key covers the files that select the ESP-IDF build: a restored
+      # esp-idf-sys CMake tree from another IDF version or sdkconfig fails to configure.
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
+        with:
+          key: esp32c6-${{ hashFiles('.cargo/config.toml.dist', 'sdkconfig.defaults') }}
 
       - name: Setup cargo config
         run: cp .cargo/config.toml.dist .cargo/config.toml
@@ -134,11 +139,7 @@ jobs:
   # ===========================================================================
   build-c3:
     name: Build & Image check (ESP32-C3)
-    # Pinned to 24.04: `ubuntu-latest` moved to 26.04 (libxml2.so.16), where ESP-IDF
-    # v5.3.3's prebuilt esp-clang 16 fails to load libxml2.so.2 during
-    # `idf_tools.py install`, so every esp-idf-sys build dies (CI breakage 2026-11-12;
-    # same fix as rustyfarian-network 06c5bd2). Unpin with an ESP-IDF upgrade.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -147,6 +148,11 @@ jobs:
         run: |
           curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
           cargo binstall -y ldproxy espflash
+
+      # ESP-IDF >= v5.4 ships libclang in a separate esp-clang-libs package that
+      # esp-idf-sys does not install, so bindgen needs the system libclang.
+      - name: Install libclang for bindgen
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
 
       - name: Install pinned nightly toolchain
         run: |
@@ -160,7 +166,7 @@ jobs:
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
         with:
-          key: esp32c3
+          key: esp32c3-${{ hashFiles('.cargo/config.toml.dist', 'sdkconfig.defaults') }}
 
       - name: Setup cargo config
         run: cp .cargo/config.toml.dist .cargo/config.toml
