@@ -7,6 +7,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- ESP-IDF `v5.3.3` → `v5.5.6`, so the firmware builds on Ubuntu 26.04 hosts: its `esp-clang` 19 links LLVM statically and no longer needs `libxml2.so.2`.
+- CI firmware jobs run on `ubuntu-latest` again and install `libclang-dev`, because bindgen no longer gets `libclang` from `esp-clang`.
+
 ## [0.3.0] - 2026-11-12
 
 ### Added
