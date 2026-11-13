@@ -9,9 +9,9 @@ set -euo pipefail
 #
 # Building and validating happens in scripts/preflight.sh, which also refuses a
 # bootloader built without CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y. The IDF-built
-# bootloader is then passed explicitly: espflash 4.x bundles an ESP-IDF v5.5.1
-# bootloader whose 32 KB MMU page size mismatches this project's v5.3.3 app, and
-# only the IDF-built one carries this repo's sdkconfig.
+# bootloader of the pinned ESP-IDF is then passed explicitly: espflash 4.x bundles its
+# own bootloader, which rejected this project's v5.3.3 app,
+# and only the IDF-built one carries this repo's sdkconfig.
 # See docs/project-lore.md "OTA & Firmware Update".
 #
 # CAUTION: `--ignore-app-descriptor` also disables espflash's chip-model check, so

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # flash-hal.sh — flash the bare-metal esp-hal image for a chip and open the monitor.
 # Usage: flash-hal.sh <chip> <hal-target-dir> [idf-target-dir]
-# Reuses the IDF-built v5.3.3 bootloader when one exists; otherwise espflash falls
+# Reuses the IDF-built bootloader of the pinned ESP-IDF when one exists; otherwise espflash falls
 # back to its bundled bootloader. Uses espflash's default partition table (app at
 # 0x10000), not partitions.csv: the hal tier has no OTA yet.
 set -euo pipefail
@@ -28,7 +28,7 @@ if [ -n "$bl" ]; then
     bootloader_args=(--bootloader "$bl")
 else
     printf 'Warning: no IDF %s bootloader found; espflash uses its bundled one.\n' "$chip" >&2
-    printf '(optional: `just build idf_%s_rgb_clock` to reuse the IDF v5.3.3 bootloader)\n' "$chip" >&2
+    printf '(optional: `just build idf_%s_rgb_clock` to reuse the IDF-built bootloader)\n' "$chip" >&2
 fi
 
 port="$("$SCRIPT_DIR/detect-port.sh")"

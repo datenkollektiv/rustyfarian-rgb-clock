@@ -14,6 +14,7 @@ review-queue/
 /.embuild
 /target
 /Cargo.lock
-.cargo/config.toml
+# ESP-IDF component manager lock files; the managed components are pinned in Cargo.toml.
+/components_*.lock
 tmp/
 audit/

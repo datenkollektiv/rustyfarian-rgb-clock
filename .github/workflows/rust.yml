@@ -63,11 +63,12 @@ jobs:
   # ===========================================================================
   build:
     name: Build & Clippy (ESP32-C6)
-    # Pinned to 24.04: `ubuntu-latest` moved to 26.04 (libxml2.so.16), where ESP-IDF
-    # v5.3.3's prebuilt esp-clang 16 fails to load libxml2.so.2 during
-    # `idf_tools.py install`, so every esp-idf-sys build dies (CI breakage 2026-11-12;
-    # same fix as rustyfarian-network 06c5bd2). Unpin with an ESP-IDF upgrade.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    # The runner preinstalls Clang 20, 21 and 22, and bindgen's clang-sys loads the
+    # newest libclang it finds; libclang 22 breaks the ESP-IDF v6.1 bindings for
+    # esp-idf-hal 0.47. Pin bindgen to the libclang 21 installed below.
+    env:
+      LIBCLANG_PATH: /usr/lib/llvm-21/lib
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -76,6 +77,11 @@ jobs:
         run: |
           curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
           cargo binstall -y ldproxy espflash
+
+      # ESP-IDF >= v5.4 ships libclang in a separate esp-clang-libs package that
+      # esp-idf-sys does not install, so bindgen needs the system libclang.
+      - name: Install libclang for bindgen
+        run: sudo apt-get update && sudo apt-get install -y libclang-21-dev
 
       - name: Install pinned nightly toolchain
         run: |
@@ -86,11 +92,12 @@ jobs:
       - name: Setup just
         uses: extractions/setup-just@v4
 
+      # The key covers the files that select the ESP-IDF build: a restored
+      # esp-idf-sys CMake tree from another IDF version or sdkconfig fails to configure.
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
-
-      - name: Setup cargo config
-        run: cp .cargo/config.toml.dist .cargo/config.toml
+        with:
+          key: esp32c6-${{ hashFiles('.cargo/config.toml', 'sdkconfig.defaults') }}
 
       # Credentials are provisioned at runtime (SoftAP portal), not baked in, so
       # no .env is needed to build. See docs/features/archive/wifi-softap-provisioning-v1.md.
@@ -134,11 +141,12 @@ jobs:
   # ===========================================================================
   build-c3:
     name: Build & Image check (ESP32-C3)
-    # Pinned to 24.04: `ubuntu-latest` moved to 26.04 (libxml2.so.16), where ESP-IDF
-    # v5.3.3's prebuilt esp-clang 16 fails to load libxml2.so.2 during
-    # `idf_tools.py install`, so every esp-idf-sys build dies (CI breakage 2026-11-12;
-    # same fix as rustyfarian-network 06c5bd2). Unpin with an ESP-IDF upgrade.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    # The runner preinstalls Clang 20, 21 and 22, and bindgen's clang-sys loads the
+    # newest libclang it finds; libclang 22 breaks the ESP-IDF v6.1 bindings for
+    # esp-idf-hal 0.47. Pin bindgen to the libclang 21 installed below.
+    env:
+      LIBCLANG_PATH: /usr/lib/llvm-21/lib
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -147,6 +155,11 @@ jobs:
         run: |
           curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
           cargo binstall -y ldproxy espflash
+
+      # ESP-IDF >= v5.4 ships libclang in a separate esp-clang-libs package that
+      # esp-idf-sys does not install, so bindgen needs the system libclang.
+      - name: Install libclang for bindgen
+        run: sudo apt-get update && sudo apt-get install -y libclang-21-dev
 
       - name: Install pinned nightly toolchain
         run: |
@@ -160,10 +173,7 @@ jobs:
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
         with:
-          key: esp32c3
-
-      - name: Setup cargo config
-        run: cp .cargo/config.toml.dist .cargo/config.toml
+          key: esp32c3-${{ hashFiles('.cargo/config.toml', 'sdkconfig.defaults') }}
 
       - name: Build ESP32-C3
         run: just build idf_c3_rgb_clock
