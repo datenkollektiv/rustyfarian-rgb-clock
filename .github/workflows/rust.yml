@@ -18,45 +18,22 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  IDF_VERSION: v6.1
 
 jobs:
   # ===========================================================================
-  # Tier 1: Host unit tests (clock-pure)
+  # Tier 1: Host checks — partition table, partition-validator, flash-script and
+  # tick-topic suites, clock-pure/clock-app unit tests (`just ci-test`); cargo-deny (`just ci-deny`)
   # ===========================================================================
-  host-tests:
-    name: Host Unit Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
+  test:
+    uses: datenkollektiv/rustyfarian-ci/.github/workflows/host-checks.yml@v1
+    with:
+      check: test
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup just
-        uses: extractions/setup-just@v4
-
-      - name: Enable caching
-        uses: Swatinem/rust-cache@v2
-
-      # Guards the flash layout on every push: an app partition off a 64 KiB
-      # boundary, a wrong type/subtype pair, or a slot too small for the image is
-      # otherwise only discovered after erasing a device. Host-only, no toolchain.
-      - name: Validate partition table
-        run: just partition-check
-
-      - name: Partition-validator regression suite
-        run: just partition-check-tests
-
-      # Hardware-free tests of the flash script's guards: chip-mismatch refusal
-      # and a dry run that must never call espflash.
-      - name: Flash-script regression suite
-        run: just flash-image-tests
-
-      # Host-side clock-pure clippy runs as its own fast gate in clippy.yml;
-      # this job owns the unit tests to avoid duplicating that lint run.
-      - name: Run clock-pure tests
-        run: just test
+  deny:
+    uses: datenkollektiv/rustyfarian-ci/.github/workflows/host-checks.yml@v1
+    with:
+      check: deny
 
   # ===========================================================================
   # Tier 1: Build and Clippy for ESP32-C6
@@ -64,66 +41,40 @@ jobs:
   build:
     name: Build & Clippy (ESP32-C6)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     # The runner preinstalls Clang 20, 21 and 22, and bindgen's clang-sys loads the
     # newest libclang it finds; libclang 22 breaks the ESP-IDF v6.1 bindings for
-    # esp-idf-hal 0.47. Pin bindgen to the libclang 21 installed below.
+    # esp-idf-hal 0.47. Pin bindgen to the runner's libclang 21 (ESP-IDF >= v5.4
+    # ships libclang in a separate esp-clang-libs package that esp-idf-sys does not
+    # install, so bindgen needs the system libclang).
     env:
       LIBCLANG_PATH: /usr/lib/llvm-21/lib
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Install ldproxy and espflash
-        run: |
-          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-          cargo binstall -y ldproxy espflash
-
-      # ESP-IDF >= v5.4 ships libclang in a separate esp-clang-libs package that
-      # esp-idf-sys does not install, so bindgen needs the system libclang.
-      - name: Install libclang for bindgen
-        run: sudo apt-get update && sudo apt-get install -y libclang-21-dev
-
-      - name: Install pinned nightly toolchain
-        run: |
-          rustup toolchain install nightly-2026-01-26
-          rustup component add rust-src clippy --toolchain nightly-2026-01-26
-          rustup default nightly-2026-01-26
-
-      - name: Setup just
-        uses: extractions/setup-just@v4
+        uses: actions/checkout@v7
 
       # The key covers the files that select the ESP-IDF build: a restored
       # esp-idf-sys CMake tree from another IDF version or sdkconfig fails to configure.
-      - name: Enable caching
-        uses: Swatinem/rust-cache@v2
+      - name: Setup Rust and just
+        uses: datenkollektiv/rustyfarian-ci/.github/actions/setup-rust-just@v1
         with:
-          key: esp32c6-${{ hashFiles('.cargo/config.toml', 'sdkconfig.defaults') }}
+          toolchain: nightly-2026-01-26
+          components: rust-src,clippy
+          tools: espflash
+          cache-key: esp32c6-${{ env.IDF_VERSION }}-${{ hashFiles('.cargo/config.toml', 'sdkconfig.defaults') }}
+
+      # The justfile keeps ESP_IDF_TOOLS_INSTALL_DIR=workspace off the RAM disk, which
+      # overrides the action's `global` for every `just` recipe.
+      - name: Setup ESP-IDF
+        uses: datenkollektiv/rustyfarian-ci/.github/actions/setup-esp-idf@v1
+        with:
+          idf-version: ${{ env.IDF_VERSION }}
+          mcu: esp32c6
 
       # Credentials are provisioned at runtime (SoftAP portal), not baked in, so
       # no .env is needed to build. See docs/features/archive/wifi-softap-provisioning-v1.md.
-
-      - name: Configure UART console for Wokwi
-        run: echo "CONFIG_ESP_CONSOLE_UART_DEFAULT=y" >> sdkconfig.defaults
-
-      - name: Build
-        run: cargo build --release
-
-      - name: Clippy
-        run: just clippy
-
-      # Measures the exact app image against both OTA slots, so firmware growth
-      # fails here rather than after a flash or an OTA push.
-      - name: Check the app image fits the OTA slots
-        run: just image-check
-
-      - name: Generate firmware image for Wokwi
-        run: |
-          BOOTLOADER=$(ls -t target/riscv32imac-esp-espidf/release/build/esp-idf-sys-*/out/build/bootloader/bootloader.bin | head -1)
-          espflash save-image --chip esp32c6 --flash-size 4mb --merge \
-            --bootloader "$BOOTLOADER" \
-            --partition-table partitions.csv \
-            target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock \
-            target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock.bin
+      - name: Build, clippy, image check and Wokwi image
+        run: just ci-build
 
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v7
@@ -142,44 +93,30 @@ jobs:
   build-c3:
     name: Build & Image check (ESP32-C3)
     runs-on: ubuntu-latest
-    # The runner preinstalls Clang 20, 21 and 22, and bindgen's clang-sys loads the
-    # newest libclang it finds; libclang 22 breaks the ESP-IDF v6.1 bindings for
-    # esp-idf-hal 0.47. Pin bindgen to the libclang 21 installed below.
+    timeout-minutes: 60
+    # Same libclang 21 pin as the `build` job.
     env:
       LIBCLANG_PATH: /usr/lib/llvm-21/lib
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
-      - name: Install ldproxy and espflash
-        run: |
-          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-          cargo binstall -y ldproxy espflash
-
-      # ESP-IDF >= v5.4 ships libclang in a separate esp-clang-libs package that
-      # esp-idf-sys does not install, so bindgen needs the system libclang.
-      - name: Install libclang for bindgen
-        run: sudo apt-get update && sudo apt-get install -y libclang-21-dev
-
-      - name: Install pinned nightly toolchain
-        run: |
-          rustup toolchain install nightly-2026-01-26
-          rustup component add rust-src clippy --toolchain nightly-2026-01-26
-          rustup default nightly-2026-01-26
-
-      - name: Setup just
-        uses: extractions/setup-just@v4
-
-      - name: Enable caching
-        uses: Swatinem/rust-cache@v2
+      - name: Setup Rust and just
+        uses: datenkollektiv/rustyfarian-ci/.github/actions/setup-rust-just@v1
         with:
-          key: esp32c3-${{ hashFiles('.cargo/config.toml', 'sdkconfig.defaults') }}
+          toolchain: nightly-2026-01-26
+          components: rust-src,clippy
+          tools: espflash
+          cache-key: esp32c3-${{ env.IDF_VERSION }}-${{ hashFiles('.cargo/config.toml', 'sdkconfig.defaults') }}
 
-      - name: Build ESP32-C3
-        run: just build idf_c3_rgb_clock
+      - name: Setup ESP-IDF
+        uses: datenkollektiv/rustyfarian-ci/.github/actions/setup-esp-idf@v1
+        with:
+          idf-version: ${{ env.IDF_VERSION }}
+          mcu: esp32c3
 
-      - name: Check the C3 app image fits the OTA slots
-        run: just image-check idf_c3_rgb_clock
+      - name: Build and image check
+        run: just ci-build-c3
 
   # ===========================================================================
   # Tier 2: Wokwi Simulation
@@ -187,10 +124,18 @@ jobs:
   wokwi:
     name: Wokwi Simulation
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: build
+    # The justfile resolves host_target via rustc at load time; use the runner's
+    # stable instead of auto-installing the pinned nightly from rust-toolchain.toml.
+    env:
+      RUSTUP_TOOLCHAIN: stable
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
+
+      - name: Setup just
+        uses: extractions/setup-just@v4
 
       - name: Download firmware artifact
         uses: actions/download-artifact@v8
@@ -198,11 +143,8 @@ jobs:
           name: firmware
           path: target/riscv32imac-esp-espidf/release/
 
-      - name: Restore executable permissions
-        run: chmod +x target/riscv32imac-esp-espidf/release/rustyfarian-rgb-clock
-
-      - name: Create screenshots directory
-        run: mkdir -p screenshots
+      - name: Prepare the firmware and screenshots directory
+        run: just ci-wokwi prepare
 
       - name: "Wokwi: Boot and Rainbow Animation"
         uses: wokwi/wokwi-ci-action@v1
@@ -234,13 +176,7 @@ jobs:
 
       - name: Check Wokwi results
         if: always()
-        run: |
-          if [[ "${{ steps.wokwi-startup.outcome }}" == "failure" ]]; then
-            echo "::warning::Wokwi startup test failed - check screenshots"
-          fi
-          if [[ "${{ steps.wokwi-frames.outcome }}" == "failure" ]]; then
-            echo "::warning::Wokwi frames test failed - check screenshots"
-          fi
-          if grep -qi "panic\|abort\|exception" screenshots/*.log 2>/dev/null; then
-            echo "::error::Critical errors found in Wokwi serial logs"
-          fi
+        env:
+          STARTUP: ${{ steps.wokwi-startup.outcome }}
+          FRAMES: ${{ steps.wokwi-frames.outcome }}
+        run: just ci-wokwi check "$STARTUP" "$FRAMES"

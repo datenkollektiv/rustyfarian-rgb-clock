@@ -16,31 +16,9 @@ concurrency:
   group: audit-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  CARGO_TERM_COLOR: always
-  RUSTUP_TOOLCHAIN: stable
-
+# cargo-deny (licenses, advisories, bans, sources) runs as the `deny` job of rust.yml.
 jobs:
   audit:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
-
-      - name: Deny (licenses, advisories, bans)
-        uses: EmbarkStudios/cargo-deny-action@v2
-
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
-
-      - name: Run cargo audit
-        run: cargo audit
+    uses: datenkollektiv/rustyfarian-ci/.github/workflows/host-checks.yml@v1
+    with:
+      check: audit

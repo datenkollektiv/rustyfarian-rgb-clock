@@ -31,8 +31,10 @@ Delivers esp-hal clock M3 by construction.
 
 ## Open Questions
 
-- [x] IDF `receive()` next to `on_message`? No: a message reaches one or the other, so `on_message` goes.
-- [x] App location? A `no_std` crate, `crates/clock-app`.
+- [x] IDF `receive()` next to `on_message`?
+  - No: a message reaches one or the other, so `on_message` goes.
+- [x] App location?
+  - A `no_std` crate, `crates/clock-app`.
 - [ ] IDF heap with the app thread and the OTA worker: gate is min-free ≥ 40 KB on the C3 after one outage.
 
 ## Gaps and Discrepancies (upstream `a53c434`)

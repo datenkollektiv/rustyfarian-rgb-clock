@@ -23,17 +23,20 @@ Missing upstream pieces become feature requests to the upstream repository, or c
 |                                    New crate `crates/rustyfarian-esp-hal-rgb-clock` | Mirrors the knob esp-hal tier; IDF firmware stays at root                              | Feature flag in the root package     |
 |                                             Not a `default-member` of the workspace | Bare `cargo` and IDF recipes stay on the espidf target                                 | `exclude` the crate                  |
 |                                                          ESP32-C3 first, DIN GPIO 4 | User decision: the C6 board was given away                                             | C6 first; both chips at once         |
-|                                        `rustyfarian-esp-hal-network` by git rev pin | esp-hal provisioning is only on unreleased main (`01ff1b9`); the `juggler` pin is gone | Local path patch; wait for 0.7       |
-| BOOT (GPIO9) re-entry via `rustyfarian_esp_hal_network::provisioning::gate_reentry` | Upstream hook (part 6 of portal fallback); recovery without a cable                    | Wait for an esp-hal boot entry point |
+|                                        `rustyfarian-esp-hal-network` by git rev pin | esp-hal provisioning only on unreleased main (`01ff1b9`); `juggler` pin is gone | Local path patch; wait for 0.7       |
+| BOOT (GPIO9) re-entry via `gate_reentry` | Upstream hook (part 6 of portal fallback); recovery without a cable                    | Wait for an esp-hal boot entry point |
 |                     BOOT polled for 2 s after the prompt (bug 003); no ring cue yet | The hal app reaches the hook ~250 ms after reset, too early for one read               | One read like upstream; a 1 s window |
 |                               Broker is an IPv4 literal; DNS request filed upstream | esp-hal MQTT has no DNS yet (upstream ADR 019 §2)                                      | Contribute DNS before M3             |
 |                                                                  OTA left out of v1 | esp-hal tier has `EspHalOtaManager` only, no runtime                                   | Hand-roll an OTA runtime locally     |
 |                                         `clock-pure` becomes `no_std` outside tests | It uses nothing from `std` already                                                     | Copy the logic into the hal crate    |
 |                                       Follow the knob build pattern (ADR 006 there) | One config, `-Zbuild-std=core,alloc` per recipe, `target/hal`                          | Second workspace                     |
 |                                  Store at `0x9000`/`0x6000` in the default NVS area | Default table has no free flash; survives reflash (ADR 015 §4 deviation)               | Dedicated partition (M5)             |
-|                            SoftAP bring-up owned by the network session (`start()`) | Upstream since `6f6286f`; no local `ApConfig` workaround; log SSID from `ap_mac()`       | Local SoftAP bring-up in `main.rs`   |
+|                            SoftAP bring-up owned by the network session (`start()`) | Upstream since `6f6286f`; no local `ApConfig` workaround       | Local SoftAP bring-up in `main.rs`   |
 |                                    72 KiB heap, 24 KiB link-time main-stack minimum | Portal `POST /save` peaks near 20.5 KiB on the shared stack                            | Smaller heap; unchecked stack        |
 |                            Blocking WS2812 transmit inside `critical_section::with` | esp-hal 1.2.2 refills async RMT in `poll`; misses the ~30 µs deadline                  | Async driver; RMT driver in RAM      |
+
+- BOOT (GPIO9) re-entry uses the hook `rustyfarian_esp_hal_network::provisioning::gate_reentry`.
+- The SoftAP SSID is logged from `ap_mac()`.
 
 ## Constraints
 
@@ -77,11 +80,13 @@ Missing upstream pieces become feature requests to the upstream repository, or c
   - Passed: clean rainbow and steady hands (blue LED 11, green LED 5, red LED 10), Wi-Fi unaffected by the blocking ring transmit.
   - Passed: BOOT short press → portal with the record kept, then STA rejoin; 3 s hold → record erased, re-provisioned, STA join.
   - Fixed on the way: garbled ring (`docs/bugs/archive/002-esp-hal-async-rmt-garbles-ring-2026-10-30.md`) and BOOT window (`docs/bugs/archive/003-esp-hal-boot-reentry-window-too-short-2026-10-30.md`).
-  - Fixed 2026-11-11: the "restarting into normal boot" line was cut off by the reset; a 50 ms drain keeps it (`docs/bugs/archive/004-commit-restart-log-line-cut-2026-10-30.md`), check on the next C3 run.
+  - Fixed 2026-11-11: the "restarting into normal boot" line was cut off by the reset; a 50 ms drain keeps it (`docs/bugs/archive/004-commit-restart-log-line-cut-2026-10-30.md`).
+  - Check on the next C3 run.
   - Deferred: a static ring cue during the BOOT window; it needs the ring built before `gate_reentry`.
   - Known gap: a wrong Wi-Fi password retries forever with the ring on the rainbow; recover with `just erase-flash`.
   - 2026-10-30 pin move to `01ff1b9`: re-entry types come from `rustyfarian-esp-hal-network`, the session owns SoftAP bring-up, store read-back fix `7727443` included.
-  - Passed on the C3 2026-10-31: AP `Rustyfarian-C4F4` with portal name `rgb-clock`, pairing ring, BOOT short press keeps the record, 3 s hold erases it, provision/commit/reboot into the face; boot now logs `Showing fixed time 12:34:56`.
+  - Passed on the C3 2026-10-31: AP `Rustyfarian-C4F4` with portal name `rgb-clock`, pairing ring, BOOT short press keeps the record, 3 s hold erases it, provision/commit/reboot into the face.
+  - Boot now logs `Showing fixed time 12:34:56`.
   - Observed: two or three hitches in the rainbow while Wi-Fi connects (radio bring-up shares the one executor); cosmetic, recheck when M3 lands.
 - [ ] M3 — MQTT tick
   - Implemented 2026-11-05 through the shared `clock-app` (ADR-006, `one-clock-app-two-tiers-v1.md`); awaits the C3 hardware run.
@@ -94,16 +99,15 @@ Missing upstream pieces become feature requests to the upstream repository, or c
 - 2026-10-27 — Feature doc created via /feature dialog
 - 2026-10-27 — M1 implemented: hal crate, `*-hal` recipes, `clock-pure::render_time`; `just verify`, `verify-hal`, `build-hal`, `deny` green; not yet flashed
 - 2026-10-27 — M1 hardware-validated on the C3; `*-hal` recipes take a `chip` argument (default `c3`, `just flash-hal c3`)
-- 2026-10-27 — M2 implemented (SoftAP portal, STA, store at `0x9000`, 24 KiB stack floor, 7 outbox requests)
-  - `just verify`, `verify-hal`, `build-hal`, `deny` green
-  - Not yet flashed
-  - Broker prefill must be an IPv4 literal
+- 2026-10-27 — M2 implemented (SoftAP portal, STA, store at `0x9000`, 24 KiB stack floor, 7 outbox requests); `just verify`, `verify-hal`, `build-hal`, `deny` green
+- 2026-10-27 — M2 not yet flashed
+- 2026-10-27 — Broker prefill must be an IPv4 literal
 - 2026-10-28 — M2 committed (`39c86a4`); adopted the upstream re-entry hook: pin `bae2dc4`, direct `juggler` pin, BOOT short press → portal, 3 s → erase; awaiting hardware test
-- 2026-10-30 — M2 hardware test on the C3 (`just flash-hal c3`, log via the new `just monitor-log`)
-  - Provisioning to STA join passed; DHCP took over 10 s once, retried fine
-  - Ring garbled; control images pin it on the async RMT refill (blocking + critical section is clean); fix needs its own plan
-  - BOOT re-entry not caught (~250 ms sample window); erase untested
-  - M3 not started
+- 2026-10-30 — M2 hardware test on the C3 (`just flash-hal c3`, log via the new `just monitor-log`); provisioning to STA join passed
+- 2026-10-30 — M2 hardware test: DHCP took over 10 s once, retried fine
+- 2026-10-30 — M2 hardware test: ring garbled; control images pin it on the async RMT refill (blocking + critical section is clean); fix needs its own plan
+- 2026-10-30 — M2 hardware test: BOOT re-entry not caught (~250 ms sample window); erase untested
+- 2026-10-30 — M3 not started
 - 2026-10-30 — Filed bugs 002 (ring), 003 (BOOT window), 004 (cut log line) and an upstream ws2812 request; next session starts with bug 002
 - 2026-10-30 — Bug 003 fixed: 2 s BOOT window; short press, STA rejoin, 3 s erase and re-provisioning verified on the C3; next is the full M2 rerun
 - 2026-10-30 — M2 closed on the bug 003 hardware log (portal, commit, STA, BOOT short press, 3 s erase); next is M3

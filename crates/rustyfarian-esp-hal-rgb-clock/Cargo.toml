@@ -6,7 +6,7 @@ edition.workspace = true
 # esp-hal 1.2 and esp-rtos 0.4 declare rust-version 1.95.
 rust-version = "1.95"
 description = "RGB LED clock (esp-hal bare-metal runtime) - ESP32-C3, 12 WS2812 LEDs"
-license = "MIT"
+license.workspace = true
 publish = false
 
 [[bin]]

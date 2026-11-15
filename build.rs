@@ -40,7 +40,7 @@ fn main() {
     }
 
     // The version the firmware reports and compares OTA offers against. Normally
-    // the package version; `just ota-artifact version=X` overrides it so a demo
+    // the package version; `just ota-image version=X` overrides it so a demo
     // image really carries the version its manifest advertises. A manifest that
     // promises a version the image does not report is refused at the next boot
     // (see `src/ota/mod.rs`, `reconcile_boot`), so a manifest-only override
@@ -68,7 +68,7 @@ fn main() {
     println!("cargo:rustc-env=FIRMWARE_VERSION={firmware_version}");
 
     // The MQTT topic the clock takes its time from. Normally `tick`; demo-only
-    // `OTA_TICK_TOPIC=X just ota-artifact` points an OTA image at a topic nobody
+    // `OTA_TICK_TOPIC=X just ota-image` points an OTA image at a topic nobody
     // publishes, so the release health check genuinely never sees a fresh tick
     // and the 120 s deadline rollback runs while the shared publisher keeps going.
     // Validation lives in `build_support/tick_topic.rs` so `just tick-topic-tests`

@@ -72,7 +72,7 @@ Check with `df -h /Volumes/RustBuilds` and `du -sh /Volumes/RustBuilds/targets/*
 Without `set dotenv-load`, the portal prefill (`WIFI_SSID`, `MQTT_*`) falls back to hardcoded defaults, and a Cargo "Run" config flashes the board via the `espflash flash --monitor` runner.
 Fix: use a Shell Script run configuration that calls `just build` (login shell `/bin/zsh -l`), stored in the git-ignored `.idea/runConfigurations/` — `.run/` is tracked in this public repo.
 "Sync Cargo changes" cannot be routed through `just`: it runs `cargo check --target riscv32imac-esp-espidf --all-targets` itself and fails with `CMake Error: The source ".../.espressif/esp-idf/..." does not match the source ".../.embuild/espressif/esp-idf/..."` when a `just` build already configured `./target`.
-That failed build script also leaves no `esp-idf-sys` bindings, so RustRover flags `esp_idf_svc::sys` items with E0425 although `just verify` passes.
+That failed build script also leaves no `esp-idf-sys` bindings, so RustRover flags `esp_idf_svc::sys` items with E0425 although `just verify-fw` passes.
 Fix: uncomment `[build] target-dir = "target/ide"` in `.cargo/config.toml` locally and never commit it (CI's bare `cargo build` expects `./target`); every non-`just` cargo caller (RustRover, rust-analyzer, bare `cargo`) reads it, and the justfile always exports `CARGO_TARGET_DIR`, which overrides it.
 Never move this folder: the ESP-IDF CMake cache stores absolute paths, so delete it and let the next sync rebuild it.
 
@@ -118,15 +118,19 @@ The amd64 emulation lacks a syscall that this tar uses, and the error appears on
 Fix: install `python3` in the container and extract with `tarfile.open(...).extractall(filter='fully_trusted')`.
 Bind mounts of repo paths fail with `mounts denied`, so pipe the probe script in with `docker run -i ... sh -s < script.sh`.
 
-**On GitHub's `ubuntu-latest` (26.04) runner, bindgen uses libclang 22, not the libclang 21 that `apt-get install libclang-dev` adds, and the ESP-IDF v6.1 bindings then break `esp-idf-hal 0.47` with 16 errors (`spi_transaction_t__bindgen_ty_1`, `rmt_encoder_t` has only `_address`).**
-The runner image preinstalls Clang 20, 21 and 22, and `clang-sys` loads the newest libclang it finds.
-In the same `just act` container, the build passed with only `libclang-dev` and failed once `clang-20 clang-21 clang-22` were installed (2026-11-13).
-A plain `catthehacker/ubuntu:act-26.04` image hides this: it ships no extra Clang, so `.github/act/Dockerfile` installs the runner's set.
-Fix: the firmware jobs install `libclang-21-dev` and set `LIBCLANG_PATH: /usr/lib/llvm-21/lib`; drop the pin once bindgen output works with libclang 22.
-
-**With the macOS RAM disk mounted, the ESP-IDF v6.1 build lacks the `espressif/mqtt` extra component, so `just verify` fails in `rustyfarian-esp-idf-network` (`esp_mqtt_client_stop` not found, no `esp_idf_svc::mqtt`).**
+**With the macOS RAM disk mounted, the ESP-IDF v6.1 build lacks the `espressif/mqtt` extra component, so `just verify-fw` fails in `rustyfarian-esp-idf-network` (`esp_mqtt_client_stop` not found, no `esp_idf_svc::mqtt`).**
 The same commit builds in `./target`, where `out/build/espressif__mqtt` exists; the root crate's `[[package.metadata.esp-idf-sys.extra_components]]` apparently goes unread when target-dir lies outside the workspace (observed 2026-11-13, mechanism unconfirmed).
-Workaround: `just --set ramdisk /nonexistent verify` builds in `./target` with `workspace` tools.
+Workaround: `just --set ramdisk /nonexistent verify-fw` builds in `./target` with `workspace` tools.
+
+**Every `just` call, even `just ci-wokwi prepare`, runs `rustc` first, so a CI job without a Rust setup step makes rustup install the pinned nightly from `rust-toolchain.toml`.**
+`just` evaluates backtick variables at load time, and `host_target` shells out to `scripts/host-target.sh` (`rustc -vV`) whatever recipe runs.
+Without rustup the recipe fails with `Failed to determine rustc host target` before its first line.
+Fix: give such jobs `RUSTUP_TOOLCHAIN: stable` (the `wokwi` job has it since 2026-11-14), or a Rust setup step.
+
+**`setup-esp-idf` exports `ESP_IDF_VERSION` and `ESP_IDF_TOOLS_INSTALL_DIR=global` through `GITHUB_ENV`, and a process variable beats a non-`force` `[env]` entry in `.cargo/config.toml`.**
+So an IDF bump in `.cargo/config.toml` alone leaves CI building the old IDF, while the cache key, which hashes that file, still changes.
+The tools dir does not leak: the justfile's `export ESP_IDF_TOOLS_INSTALL_DIR` overrides the action for every `just` recipe.
+Fix: bump `IDF_VERSION` in `.github/workflows/rust.yml` together with `ESP_IDF_VERSION` in `.cargo/config.toml`.
 
 ---
 
@@ -222,7 +226,7 @@ The IDF boot leaves ~500 ms before the same single-sample hook, and holding BOOT
 Five manual RESET-then-BOOT attempts on 2026-10-30 never registered; the hook needs a sampling window.
 Fix (2026-10-30, bug 003): `wait_for_press` polls GPIO9 for `BOOT_WINDOW_MS` (2000 ms) after the prompt; a press landed 0.86 s in on the C3.
 
-**`just monitor` and `just flash-hal` fail without a TTY (`Failed to initialize input reader`), so agents cannot read the serial log through them.**
+**`just monitor` and `just run-hal` fail without a TTY (`Failed to initialize input reader`), so agents cannot read the serial log through them.**
 Flashing still completes before the monitor fails.
 Fix: `just monitor-log tmp/<name>.log` runs `espflash monitor --non-interactive` into a file.
 

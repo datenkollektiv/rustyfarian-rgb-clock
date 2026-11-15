@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# flash-hal.sh — flash the bare-metal esp-hal image for a chip and open the monitor.
-# Usage: flash-hal.sh <chip> <hal-target-dir> [idf-target-dir]
+# flash-hal.sh — flash the bare-metal esp-hal image for a chip; `--monitor` also opens the monitor.
+# Usage: flash-hal.sh <chip> <hal-target-dir> [idf-target-dir] [--monitor]
 # Reuses the IDF-built bootloader of the pinned ESP-IDF when one exists; otherwise espflash falls
 # back to its bundled bootloader. Uses espflash's default partition table (app at
 # 0x10000), not partitions.csv: the hal tier has no OTA yet.
@@ -11,12 +11,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib.sh"
 
 if [ $# -lt 2 ]; then
-    printf 'Usage: %s <chip> <hal-target-dir> [idf-target-dir]\n' "$0" >&2
+    printf 'Usage: %s <chip> <hal-target-dir> [idf-target-dir] [--monitor]\n' "$0" >&2
     exit 2
 fi
 chip="$1"
 hal_dir="$2"
 idf_dir="${3:-target}"
+# `just run-hal` forwards --monitor; `just flash-hal` flashes only.
+monitor_args=()
+case "${4:-}" in
+    "") ;;
+    --monitor) monitor_args=(--monitor) ;;
+    *) printf 'Error: unknown option %s (expected --monitor)\n' "$4" >&2; exit 2 ;;
+esac
 chip_env="$("$SCRIPT_DIR/hal-chip-env.sh" "$chip")"
 eval "$chip_env"
 elf="$hal_dir/$HAL_TARGET/release/rustyfarian-esp-hal-rgb-clock"
@@ -40,4 +47,5 @@ fi
 exec espflash flash --chip "$ESPFLASH_CHIP" --ignore-app-descriptor --flash-size 4mb \
     ${bootloader_args[@]+"${bootloader_args[@]}"} \
     ${port_args[@]+"${port_args[@]}"} \
-    --monitor "$elf"
+    ${monitor_args[@]+"${monitor_args[@]}"} \
+    "$elf"

@@ -71,7 +71,7 @@ GitHub Actions workflows in `.github/workflows/`:
 - `audit.yml` — `cargo-deny` advisories.
 
 Keep action major versions aligned with the sibling rustyfarian repos.
-Local equivalents: `just act-ci`, `just act-audit`, `just act-fmt`, `just act-all`.
+Local equivalents: `just act test`, `just act audit`, `just act fmt`, `just act` (all host jobs).
 
 </details>
 
