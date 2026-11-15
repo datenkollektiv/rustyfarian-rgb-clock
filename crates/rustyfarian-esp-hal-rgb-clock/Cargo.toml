@@ -65,5 +65,5 @@ esp-alloc = "=0.11.0"
 # provides the `NorFlash` impl the provisioning store needs.
 esp-storage = { version = "=0.10.0", default-features = false, features = ["critical-section", "embedded-storage"] }
 esp-radio = { version = "=1.0.0-beta.1", default-features = false }
-embassy-net = { version = "=0.8.0", default-features = false }
+embassy-net = { version = "=0.9.1", default-features = false }
 embassy-sync = { version = "=0.8.0", default-features = false }
