@@ -8,6 +8,7 @@ resolver = "2"
 [workspace.package]
 authors = ["Florian Waibel <fwaibel@datenkollektiv.de>"]
 edition = "2021"
+license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 # Common dependencies
@@ -57,7 +58,7 @@ authors.workspace = true
 edition.workspace = true
 rust-version = "1.95"
 description = "RGB LED clock for ESP32-C6 using WS2812 LEDs and MQTT time synchronization"
-license = "MIT"
+license.workspace = true
 repository = "https://github.com/datenkollektiv/rustyfarian-rgb-clock"
 keywords = ["esp32", "led", "clock", "ws2812", "mqtt"]
 categories = ["embedded", "hardware-support"]

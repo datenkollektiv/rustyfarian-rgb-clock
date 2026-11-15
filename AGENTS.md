@@ -4,9 +4,9 @@
 
 ## Project Overview
 
-ESP32-C6 (RISC-V) firmware that displays time using 12 WS2812 NeoPixel LEDs arranged as a clock face.
+ESP32-C6 and ESP32-C3 (RISC-V) firmware that displays time using 12 WS2812 NeoPixel LEDs arranged as a clock face.
 Time is received via MQTT; the real goal is validating a three-tier embedded testing pyramid (host tests → Wokwi simulation → hardware-in-the-loop) for future Rustyfarian projects.
-Current stable release: v0.2.0.
+Current stable release: v0.3.0.
 
 ## Architecture
 
@@ -14,25 +14,26 @@ Three layers with a strict hardware boundary:
 
 - **`crates/clock-pure/`** — `#![no_std]` pure Rust library, fully testable on the host without any embedded toolchain.
   - Provides `hour_to_index`, `minute_to_index`, `second_to_index`, `scale_color`, `add_colors`.
-- **`src/rgb_clock.rs`** — Firmware display layer.
-  - `RGBClock` wraps `WS2812RMT` and maps `LocalTime` to 12 LED positions using `clock-pure`.
-  - Startup rainbow animation via `ferriswheel` runs until the first MQTT tick arrives.
+- **`crates/clock-app/`** — Shared async clock app for both tiers: MQTT tick in, WS2812 frame out, no hardware dependencies.
+- **`src/rgb_clock.rs`** — ESP-IDF ring adapter.
+  - `IdfRing` wraps `Ws2812Rmt` and shows the frames `clock-app` renders.
+  - `run_provisioning_animation` pulses the ring amber (`ferriswheel::PulseEffect`) while the SoftAP portal waits.
 - **`src/main.rs`** — Entry point.
   - GPIO18 (C6) / GPIO4 (C3) = 12-LED NeoPixel ring.
   - GPIO8 = onboard status LED.
-  - Flow: Wi-Fi init → MQTT connect → subscribe-watcher thread → clock updates.
-  - Main thread parks after setup; MQTT callbacks do all work.
+  - Flow: Wi-Fi init → MQTT connect (`MqttBuilder::subscribe`) → OTA runtime → `clock-app` thread → OTA health policy.
+  - Main thread parks after the health policy; the clock app, MQTT event loop and OTA worker run on background threads.
 
-External crates (git dependencies, path-patched locally via `.cargo/config.toml`):
-- `rustyfarian-ws2812` → `ferriswheel` (rainbow effects), `rustyfarian-esp-idf-ws2812` (RMT driver)
-- `rustyfarian-network` → `rustyfarian-esp-idf-wifi`, `rustyfarian-esp-idf-mqtt`
+External crates (from crates.io, path-patched locally via `[patch.crates-io]` in `.cargo/config.toml`):
+- `rustyfarian-ws2812` → `ferriswheel` (effects), `rustyfarian-esp-idf-ws2812` (RMT driver)
+- `rustyfarian-network` → `rustyfarian-esp-idf-network` (Wi-Fi, MQTT, provisioning, OTA), `juggler`
 
 ## Development Workflow
 
 First-time setup:
 
 ```sh
-cp .env.example .env   # fill in WIFI_SSID, WIFI_PASS, MQTT_HOST, MQTT_PORT, MQTT_CLIENT_ID
+cp .env.example .env   # optional portal prefill: WIFI_SSID, MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_CLIENT_ID
 ```
 
 All operations go through `just` — run `just --list` to see all recipes:
@@ -40,8 +41,9 @@ All operations go through `just` — run `just --list` to see all recipes:
 Host-safe (no device needed):
 
 ```sh
-just verify      # format-check + clippy + clock-pure host tests  (read-only; run before every PR)
-just pre-commit  # same but also auto-formats  (use locally before committing)
+just verify      # host gate: partition and script suites, format check, host clippy and tests (read-only; run before every PR)
+just verify-fw   # firmware gate: check and clippy for the ESP-IDF C6 target (no device needed, slow build)
+just pre-commit  # format, then verify  (use locally before committing)
 just test        # run clock-pure unit tests on host
 ```
 
@@ -61,14 +63,15 @@ just check-hal c3    # type-check for riscv32imc-unknown-none-elf
 just clippy-hal c3   # lint with warnings as errors
 just verify-hal c3   # check + clippy; slow on the first run
 just build-hal c3    # release build
-just flash-hal c3    # build, flash, and open serial monitor
+just flash-hal c3    # build and flash, no monitor
+just run-hal c3      # build, flash, and open serial monitor
 just clean-hal       # remove the hal target directory
 ```
 
 The hal crate is `crates/rustyfarian-esp-hal-rgb-clock`; it is not a workspace default member, so bare `cargo` and the IDF recipes stay on the ESP-IDF target.
 It provisions Wi-Fi at runtime through SoftAP and reads only the non-secret `.env` prefill values at build time.
 
-Credentials (`WIFI_SSID`, `WIFI_PASS`, `MQTT_HOST`, `MQTT_PORT`, `MQTT_CLIENT_ID`) are embedded at compile time via `build.rs` — no runtime config loading.
+Wi-Fi and MQTT settings are entered at runtime on the SoftAP provisioning portal; `build.rs` bakes in only the optional, non-secret `.env` prefill values.
 
 MQTT time format (topic `tick`):
 
@@ -90,10 +93,10 @@ Any change to the mapping must pass `just test`.
 Default: hour = blue `(0,0,1)`, minute = green `(0,1,0)`, second = red `(1,0,0)`.
 Brightness is applied via `scale_color` at render time.
 
-**MQTT subscribe must not be called from the `on_connect` callback.**
-`esp-idf-svc 0.52+` deadlocks if `subscribe()` is called inside the MQTT event callback — the event loop is blocked and cannot process the SUBACK.
-A dedicated watcher thread polls an `AtomicBool` flag set by `on_connect` and calls `subscribe()` from a normal thread context (see `src/main.rs`).
-This constraint extends to reconnect handling: any code that reacts to connection events must signal the watcher thread rather than calling `subscribe()` directly from the callback.
+**Never call the MQTT client from an MQTT event callback.**
+The ESP-IDF client deadlocks when a callback subscribes or publishes, because the event loop is blocked (ADR-005).
+Topics are subscribed through `MqttBuilder::subscribe`; the network crate resubscribes on every reconnect (see `src/main.rs`).
+No `on_message` callback is registered: the clock app drains `receive()`, and IDF delivers each message to the callback or the queue, never both.
 
 **Error handling:** `anyhow::Result` + `.context()` in firmware; no `unwrap()` or `expect()` outside `main` or `#[cfg(test)]`.
 In `clock-pure`, return `Option` or a custom error type — `anyhow` must not appear there.
@@ -104,7 +107,7 @@ In `clock-pure`, return `Option` or a custom error type — `anyhow` must not ap
 
 **Local dev patches:** `.cargo/config.toml` is committed. To develop against sibling working trees, add a `[patch.crates-io]` section to it locally and never commit that section.
 
-**Never:** comment out failing tests, add `#[ignore]` without a documented reason, or declare a task done without running `just verify`.
+**Never:** comment out failing tests, add `#[ignore]` without a documented reason, or declare a task done without running `just verify` (plus `just verify-fw` after firmware changes).
 
 ## Project Lore
 
@@ -138,7 +141,7 @@ Request drafts are local working files and are not committed; committed docs ref
 |---|---|
 | `crates/clock-pure/src/lib.rs` | All clock math and the full test suite |
 | `src/rgb_clock.rs` | LED display logic, hand colors, startup animation |
-| `src/main.rs` | Pin assignments, MQTT subscribe-watcher thread, FreeRTOS structure |
+| `src/main.rs` | Pin assignments, MQTT and OTA setup, thread structure |
 | `justfile` | All available recipes |
 | `docs/ROADMAP.md` | Current priorities |
 | `docs/project-lore.md` | Hard-won debugging insights |

@@ -7,6 +7,7 @@ The rgb-clock is the **integration test fixture** for the rustyfarian workspace.
 Its testing pyramid validates that ws2812, network, and the embedded toolchain work together at every release.
 v0.2.0 shipped on 2026-05-12, establishing a stable pinned integration baseline.
 SoftAP provisioning and the A/B OTA baseline have shipped since.
+
 The active work is a bare-metal esp-hal build of the clock ([`docs/features/esp-hal-clock-v1.md`](features/esp-hal-clock-v1.md)) next to the unchanged ESP-IDF firmware.
 Items move to `Ready` when they have a feature document in `docs/features/`.
 

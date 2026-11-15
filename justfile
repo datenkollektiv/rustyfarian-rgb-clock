@@ -14,6 +14,13 @@ set dotenv-load := true
 host_target := `scripts/host-target.sh`
 esp_target  := "riscv32imac-esp-espidf"
 
+# The host-testable crates (no hardware dependencies), shared by every host recipe.
+host_pkgs   := "-p clock-pure -p clock-app"
+
+# act: a local rustyfarian-ci checkout if RUSTYFARIAN_CI points at one, otherwise the pushed @v1.
+ci_dir       := env("RUSTYFARIAN_CI", "")
+ci_repo_flag := if ci_dir != "" { '--local-repository "datenkollektiv/rustyfarian-ci@v1=' + absolute_path(ci_dir) + '"' } else { "" }
+
 # Build RAM disk (macOS, optional): when `just ramdisk attach` has mounted
 # /Volumes/RustBuilds, cargo's target-dir is redirected there via CARGO_TARGET_DIR
 # to spare the SSD and speed up esp-idf-sys rebuilds. Falls back to ./target when the
@@ -48,34 +55,35 @@ _default:
 
 # ── Composite ────────────────────────────────────────────────────────────────
 #
-# Three intentionally distinct gates — keep their differences deliberate:
-#   verify     — quick, read-only local gate. Does NOT modify files and does NOT
-#                run `deny` (network access / slower). Use before opening a PR.
-#   pre-commit — modifying: runs `fmt` (rewrites files), then the same checks.
-#                Use locally right before committing.
-#   ci         — read-only mirror of the GitHub workflows. Adds `deny` on top of
-#                `verify`'s checks. This is the canonical "what CI runs" target.
+# Gates, per the rustyfarian family recipe contract (rustyfarian-ci conventions/just.md):
+#   verify     — read-only, offline, host-only: partition and script regression
+#                suites (cheapest first), format check, host clippy and tests. No device target, no
+#                network. Use before opening a PR.
+#   verify-fw  — device gate: check and lint the ESP-IDF firmware for the C6 target
+#                (needs the pinned nightly and an ESP-IDF build).
+#   pre-commit — modifying: `fmt` (rewrites files), then `verify`. Local use only;
+#                it does not run the device gate — run `just verify-fw` for firmware changes.
+#   ci         — `verify` + `deny` (network), then the device gate.
 
-# verify code quality without modifying files; suggests 'just pre-commit' on formatting issues
+# read-only, offline, host-only gate: partition and script suites, format check, host clippy and tests
 [group("composite")]
-verify: partition-check partition-check-tests flash-image-tests tick-topic-tests
-    @cargo fmt --all -- --check || (printf '\nFormatting issues found — run `just pre-commit` to auto-fix.\n' >&2 && exit 1)
-    cargo check
-    cargo clippy -- -D warnings
-    cargo clippy --features unhealthy -- -D warnings
-    cargo test -p clock-pure -p clock-app --target {{ host_target }}
+verify: partition-check partition-check-tests flash-image-tests tick-topic-tests fmt-check clippy-pure test
 
-# full pre-commit verification: format, check, lint, test (modifies files — local use only)
+# device gate: check and lint the ESP-IDF firmware for the C6 target (incl. the unhealthy demo feature)
 [group("composite")]
-pre-commit: fmt partition-check partition-check-tests flash-image-tests tick-topic-tests check clippy test
+verify-fw: check clippy
 
-# CI-equivalent verification (non-modifying): format check, deny, check, lint, test
+# format, then verify (modifies files — local use only)
 [group("composite")]
-ci: fmt-check partition-check partition-check-tests flash-image-tests tick-topic-tests deny check clippy test
+pre-commit: fmt verify
+
+# CI-equivalent gate (non-modifying): verify, deny, then the firmware device gate
+[group("composite")]
+ci: verify deny verify-fw
 
 # ── Build & Check ────────────────────────────────────────────────────────────
 
-# build firmware for a named chip target (e.g. idf_c6_rgb_clock, idf_c3_rgb_clock)
+# build release firmware for a named chip target (release-only, no debug build; e.g. idf_c6_rgb_clock, idf_c3_rgb_clock)
 [group("build")]
 build example="idf_c6_rgb_clock":
     scripts/build.sh "{{example}}"
@@ -126,8 +134,8 @@ image-check example="idf_c6_rgb_clock":
 flash example="idf_c6_rgb_clock":
     scripts/flash.sh "{{example}}"
 
-# one-time first flash of the OTA layout: validate, full-erase, then flash
 # Erases NVS too, so the device must be re-provisioned over SoftAP afterwards.
+[doc('one-time first flash of the OTA layout: validate, full-erase, then flash')]
 [group("flash")]
 flash-baseline example="idf_c6_rgb_clock": partition-check
     #!/usr/bin/env bash
@@ -165,9 +173,9 @@ flash-baseline example="idf_c6_rgb_clock": partition-check
 run example="idf_c6_rgb_clock": (flash example)
     just monitor
 
-# identify the chip on the serial port before flashing (honours ESPFLASH_PORT)
 # `--ignore-app-descriptor` disables espflash's own chip-model check, so this is
 # the only guard against flashing a C6 image onto an attached C3.
+[doc('identify the chip on the serial port before flashing (honours ESPFLASH_PORT)')]
 [group("flash")]
 board-info:
     #!/usr/bin/env bash
@@ -227,7 +235,7 @@ bootloader-path example="idf_c6_rgb_clock":
 
 # stage the OTA image, hash it, and write the manifest under tmp/ota/. Demo knobs are env vars (just arguments are positional): OTA_VARIANT=unhealthy builds the demo image; OTA_VERSION=X rebuilds with X baked in and advertised in the manifest; OTA_TRUNCATE=N stages a `<variant>-truncated` artefact serving only the first N bytes under the full-image hash; OTA_TICK_TOPIC=T subscribes the image to T instead of `tick` so it fails its health check with the publisher still running
 [group("ota")]
-ota-artifact example="idf_c6_rgb_clock" variant=env_var_or_default("OTA_VARIANT", "release") version=env_var_or_default("OTA_VERSION", "") truncate=env_var_or_default("OTA_TRUNCATE", "0") tick_topic=env_var_or_default("OTA_TICK_TOPIC", ""):
+ota-image example="idf_c6_rgb_clock" variant=env_var_or_default("OTA_VARIANT", "release") version=env_var_or_default("OTA_VERSION", "") truncate=env_var_or_default("OTA_TRUNCATE", "0") tick_topic=env_var_or_default("OTA_TICK_TOPIC", ""):
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{variant}}" in
@@ -256,14 +264,14 @@ ota-artifact example="idf_c6_rgb_clock" variant=env_var_or_default("OTA_VARIANT"
     scripts/check-image-size.sh "{{example}}"
     scripts/ota-artifact.sh "{{example}}" "{{variant}}" "{{version}}" "{{truncate}}" "$tick_topic"
 
-# serve the OTA artefacts from tmp/ota/ over plain HTTP on OTA_PORT (default 8000, the port `ota-artifact` bakes into the manifest URL); requires `just ota-artifact` first
+# serve the OTA artefacts from tmp/ota/ over plain HTTP on OTA_PORT (default 8000, the port `ota-image` bakes into the manifest URL); requires `just ota-image` first
 [group("ota")]
 ota-serve port=env_var_or_default("OTA_PORT", "8000"):
     #!/usr/bin/env bash
     set -euo pipefail
     if [ ! -d tmp/ota ]; then
         printf 'Error: tmp/ota directory does not exist\n' >&2
-        printf 'Run `just ota-artifact` first to stage the OTA image and manifest.\n' >&2
+        printf 'Run `just ota-image` first to stage the OTA image and manifest.\n' >&2
         exit 1
     fi
     printf 'Serving OTA artefacts from tmp/ota/ on port %s\n' "{{port}}"
@@ -271,14 +279,14 @@ ota-serve port=env_var_or_default("OTA_PORT", "8000"):
     printf 'This is plain HTTP for LAN demo only — not for production.\n' >&2
     python3 -m http.server --directory tmp/ota --bind 0.0.0.0 {{port}}
 
-# publish the last artefact staged by `just ota-artifact` to ota/command (broker from .env; DRY_RUN=1 prints the command)
+# publish the last artefact staged by `just ota-image` to ota/command (broker from .env; DRY_RUN=1 prints the command)
 [group("ota")]
 ota-push example="idf_c6_rgb_clock":
     #!/usr/bin/env bash
     set -euo pipefail
     command_file="tmp/ota/{{example}}/command.json"
     if [ ! -f "$command_file" ]; then
-        printf 'Error: nothing staged for %s; run `just ota-artifact %s` first.\n' "{{example}}" "{{example}}" >&2
+        printf 'Error: nothing staged for %s; run `just ota-image %s` first.\n' "{{example}}" "{{example}}" >&2
         exit 1
     fi
     scripts/ota-mqtt.sh pub ota/command "$(cat "$command_file")"
@@ -288,9 +296,9 @@ ota-push example="idf_c6_rgb_clock":
 ota-rollback from:
     scripts/ota-mqtt.sh pub ota/command '{"action":"rollback","from":"{{from}}"}'
 
-# publish a raw payload to ota/command, e.g. `just ota-command not-json` (DRY_RUN=1 prints the command)
+# publish a raw payload to ota/command, e.g. `just ota-pub not-json` (DRY_RUN=1 prints the command)
 [group("ota")]
-ota-command payload:
+ota-pub payload:
     scripts/ota-mqtt.sh pub ota/command {{quote(payload)}}
 
 # follow the device's OTA status messages on ota/status (Ctrl-C to stop)
@@ -330,10 +338,15 @@ build-hal chip="c3":
     export ESP_HAL_CONFIG_ENSURE_MAIN_STACK_MINIMUM={{ hal_stack_min }}
     cargo +esp build --release {{ hal_flags }} --target "$HAL_TARGET" --features "$HAL_FEATURE"
 
-# build, flash and monitor the bare-metal firmware for a chip; reuses the IDF bootloader when built, else espflash's bundled one (e.g. c3)
+# build and flash the bare-metal firmware for a chip, no monitor; reuses the IDF bootloader when built, else espflash's bundled one (e.g. c3)
 [group('hal')]
 flash-hal chip="c3": (build-hal chip)
     scripts/flash-hal.sh '{{ chip }}' '{{ hal_dir }}' '{{ idf_dir }}'
+
+# build, flash and monitor the bare-metal firmware for a chip; the monitor decodes backtraces against the ELF (e.g. c3)
+[group('hal')]
+run-hal chip="c3": (build-hal chip)
+    scripts/flash-hal.sh '{{ chip }}' '{{ hal_dir }}' '{{ idf_dir }}' --monitor
 
 # clean the bare-metal build artifacts
 [group('hal')]
@@ -365,31 +378,31 @@ clippy:
 # run clippy on the pure clock-pure crate only (host target — no ESP-IDF toolchain needed)
 [group("quality")]
 clippy-pure:
-    cargo clippy -p clock-pure -p clock-app --all-targets --target {{ host_target }} -- -D warnings
+    cargo clippy {{ host_pkgs }} --all-targets --target {{ host_target }} -- -D warnings
 
 # run clock-pure unit tests on host
 [group("quality")]
 test:
-    cargo test -p clock-pure -p clock-app --target {{ host_target }}
+    cargo test {{ host_pkgs }} --target {{ host_target }}
 
 # run tests with stdout/stderr visible
 [group("quality")]
 test-verbose:
-    cargo test -p clock-pure -p clock-app --target {{ host_target }} -- --nocapture
+    cargo test {{ host_pkgs }} --target {{ host_target }} -- --nocapture
 
 # watch and re-run tests on file changes (requires cargo-watch)
 [group("quality")]
 watch:
-    cargo watch -x "test -p clock-pure -p clock-app --target {{ host_target }}"
+    cargo watch -x "test {{ host_pkgs }} --target {{ host_target }}"
 
 # ── Documentation ────────────────────────────────────────────────────────────
 
 # build rustdoc for clock-pure
 [group("docs")]
 doc:
-    cargo doc -p clock-pure -p clock-app --target {{ host_target }} --no-deps
+    cargo doc {{ host_pkgs }} --target {{ host_target }} --no-deps
 
-# build and open docs in browser
+# build and open the clock-pure docs in the browser (clock-pure only; `just doc` also builds clock-app)
 [group("docs")]
 doc-open:
     cargo doc -p clock-pure --target {{ host_target }} --no-deps --open
@@ -416,9 +429,9 @@ update:
 clean:
     cargo clean
 
-# clean the IDF crate's stale esp-idf-sys artifacts for both chips, across all build
-# profiles (release from `just build`/`flash`, debug from `just check`) — needed
-# after sdkconfig changes or a chip switch
+# Covers both chips across all build profiles (release from `just build`/`flash`,
+# debug from `just check`).
+[doc("clean the IDF crate's stale esp-idf-sys artifacts (needed after sdkconfig changes or a chip switch)")]
 [group("maintenance")]
 clean-idf:
     cargo clean -p rustyfarian-rgb-clock
@@ -431,51 +444,147 @@ lock-ci:
     @git diff --quiet -- .cargo/config.toml || { echo "revert local .cargo/config.toml edits (e.g. [patch] sections) first" >&2; exit 1; }
     cargo update -p pennant -p bunting -p ferriswheel -p rustyfarian-esp-idf-ws2812 -p rustyfarian-esp-idf-network
 
-# install required development tooling (cargo-deny, cargo-audit, cargo-watch)
+# install what a fresh clone is missing: component idf (pinned nightly, ldproxy, espflash), hal (espup + esp toolchain) or tools (cargo-deny, cargo-audit, cargo-watch); empty = all; idempotent; ends with doctor
 [group("maintenance")]
-setup:
-    cargo install cargo-deny cargo-audit cargo-watch
+setup component="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ensure() { command -v "$1" >/dev/null 2>&1 || cargo install --locked --target {{ host_target }} "$2"; }
+    case "{{ component }}" in
+        ""|idf|hal|tools) ;;
+        *) echo "setup: unknown component '{{ component }}' (use idf, hal or tools)" >&2; exit 1 ;;
+    esac
+    if [ -z "{{ component }}" ] || [ "{{ component }}" = idf ]; then
+        pinned="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+        rustup toolchain install "$pinned" --component rust-src --component clippy
+        ensure ldproxy ldproxy
+        ensure espflash espflash
+    fi
+    if [ -z "{{ component }}" ] || [ "{{ component }}" = hal ]; then
+        ensure espup espup
+        if ! rustup toolchain list | awk '/^esp/ { found = 1 } END { exit !found }'; then
+            echo "Installing the esp toolchain (cargo +esp)..."
+            espup install
+        fi
+    fi
+    if [ -z "{{ component }}" ] || [ "{{ component }}" = tools ]; then
+        ensure cargo-deny cargo-deny
+        ensure cargo-audit cargo-audit
+        ensure cargo-watch cargo-watch
+    fi
+    # Tools whose install method is your choice: hints only.
+    bash -c '[ "${BASH_VERSINFO[0]}" -ge 4 ]' || echo "hint: partition-check needs bash 4+ on PATH (macOS: brew install bash)"
+    command -v act >/dev/null 2>&1 || echo "hint: \`just act\` needs act and Docker (macOS: brew install act)"
+    command -v mqttx >/dev/null 2>&1 || command -v mosquitto_pub >/dev/null 2>&1 || echo "hint: the ota-* MQTT recipes need the mqttx CLI or mosquitto (macOS: brew install mosquitto)"
+    just doctor
 
 # report development tooling status (Rust, toolchain, espflash, ldproxy, .env, RAM disk)
 [group("maintenance")]
 doctor:
     @scripts/doctor.sh "{{ ramdisk }}" "{{ idf_dir }}"
 
-# manage the build RAM disk (macOS): just ramdisk attach | detach
 # Verify an attach: `just ramdisk attach && just doctor` — the "ramdisk" row should
 # read `ok … → target-dir: …/RustBuilds/…`; then `just check` builds into it.
+[doc('manage the build RAM disk (macOS): just ramdisk attach | detach | prune [days]')]
 [group("maintenance")]
-ramdisk action:
-    @scripts/ramdisk.sh "{{ action }}"
+ramdisk action *args:
+    @scripts/ramdisk.sh "{{ action }}" {{ args }}
+
+# ── CI jobs ──────────────────────────────────────────────────────────────────
+#
+# Each GitHub Actions job runs exactly one of these (rustyfarian-ci conventions).
+# Host recipes pass --target {{ host_target }}; CI exports RUSTUP_TOOLCHAIN=stable,
+# overriding the pinned nightly in rust-toolchain.toml.
+
+# CI job: check formatting
+[group("ci")]
+ci-fmt: fmt-check
+
+# CI job: lint the host crates
+[group("ci")]
+ci-clippy: clippy-pure
+
+# CI job: partition table, partition-validator, flash-script and tick-topic suites, then host tests
+[group("ci")]
+ci-test: partition-check partition-check-tests flash-image-tests tick-topic-tests test
+
+# CI job: cargo-deny licenses, advisories, bans and sources
+[group("ci")]
+ci-deny: deny
+
+# CI job: cargo-audit advisories
+[group("ci")]
+ci-audit: audit
+
+# Wokwi reads the console from UART0, so CI appends it to sdkconfig.defaults before
+# building; outside CI (`CI` unset) the tracked file is left alone. The merged image
+# is the firmware the wokwi job downloads.
+[doc('CI job: build, lint and size-check the C6 firmware, then write the merged Wokwi image')]
+[group("ci")]
+ci-build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "${CI:-}" = "true" ]; then
+        echo "CONFIG_ESP_CONSOLE_UART_DEFAULT=y" >> sdkconfig.defaults
+    else
+        echo "ci-build: not in CI, skipping the UART console append to sdkconfig.defaults" >&2
+    fi
+    cargo build --release
+    just clippy
+    just image-check
+    out="{{ idf_dir }}/{{ esp_target }}/release"
+    bootloader="$(ls -t "$out"/build/esp-idf-sys-*/out/build/bootloader/bootloader.bin | head -1)"
+    espflash save-image --chip esp32c6 --flash-size 4mb --merge \
+        --bootloader "$bootloader" \
+        --partition-table partitions.csv \
+        "$out/rustyfarian-rgb-clock" \
+        "$out/rustyfarian-rgb-clock.bin"
+
+# CI job: build the C3 firmware and check its image fits the OTA slots
+[group("ci")]
+ci-build-c3: (build "idf_c3_rgb_clock") (image-check "idf_c3_rgb_clock")
+
+# The Wokwi scenarios themselves run in wokwi/wokwi-ci-action; this recipe holds the
+# job's shell steps: `prepare` before the action, `check <startup> <frames>` after it
+# with the two scenario step outcomes.
+[doc('CI job: Wokwi shell steps — just ci-wokwi prepare | check <startup-outcome> <frames-outcome>')]
+[group("ci")]
+ci-wokwi stage="prepare" startup="" frames="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{ stage }}" in
+        prepare)
+            chmod +x target/{{ esp_target }}/release/rustyfarian-rgb-clock
+            mkdir -p screenshots
+            ;;
+        check)
+            if [[ "{{ startup }}" == "failure" ]]; then
+                echo "::warning::Wokwi startup test failed - check screenshots"
+            fi
+            if [[ "{{ frames }}" == "failure" ]]; then
+                echo "::warning::Wokwi frames test failed - check screenshots"
+            fi
+            if grep -qi "panic\|abort\|exception" screenshots/*.log 2>/dev/null; then
+                echo "::error::Critical errors found in Wokwi serial logs"
+            fi
+            ;;
+        *) echo "ci-wokwi: unknown stage '{{ stage }}' (use prepare or check)" >&2; exit 1 ;;
+    esac
 
 # ── Local CI (act) ───────────────────────────────────────────────────────────
 
 # Runs natively (arm64 on Apple Silicon): amd64 emulation breaks GNU tar on 26.04.
+# The family act-latest image ships no runner Clang set, so it does not reproduce the
+# libclang 22 / ESP-IDF v6.1 break (lore "Toolchain & Dependencies").
 # Tokens are dropped: the actions are public and act fails on a stale GH_TOKEN.
 # No cache server: a restored target/ would hide toolchain changes, as a cache miss on CI would not.
 # `build` ends in a failed "Upload firmware artifact": act 0.2.97's artifact server rejects upload-artifact@v7 (`mime_type`).
-
-# reproduce a rust.yml job in an Ubuntu 26.04 (`ubuntu-latest`) runner image with rustup and the runner's Clang set (requires Docker + act; e.g. build-c3, build)
+# Empty job runs the host jobs; name a firmware job explicitly (`just act build-c3`). Requires Docker + act.
+[doc('run CI jobs via act in the family runner image: all host jobs, or one (`just act build-c3`)')]
 [group("local-ci")]
-act job="build-c3":
-    docker build -t rgb-clock-act:26.04 .github/act
-    env -u GH_TOKEN -u GITHUB_TOKEN act -W .github/workflows/rust.yml -j {{ job }} -P ubuntu-latest=rgb-clock-act:26.04 --pull=false --no-cache-server --artifact-server-path tmp/act-artifacts
-
-# run CI workflow locally via act (requires Docker + act)
-[group("local-ci")]
-act-ci:
-    act -j host-tests
-
-# run format-check workflow locally via act (requires Docker + act)
-[group("local-ci")]
-act-fmt:
-    act -j fmt
-
-# run audit workflow locally via act (requires Docker + act)
-[group("local-ci")]
-act-audit:
-    act -j audit
-
-# run all CI workflows locally via act (requires Docker + act)
-[group("local-ci")]
-act-all: act-fmt act-ci act-audit
+act job="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for j in {{ if job == "" { "test deny fmt clippy audit" } else { job } }}; do
+        env -u GH_TOKEN -u GITHUB_TOKEN act -j "$j" -P ubuntu-latest=catthehacker/ubuntu:act-latest --pull=false --no-cache-server --artifact-server-path tmp/act-artifacts {{ ci_repo_flag }}
+    done

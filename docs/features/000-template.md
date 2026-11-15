@@ -26,7 +26,7 @@ What constraints apply (embedded, no_std, ESP32-C6, Wokwi-simulatable)?
 Which testing tiers verify this feature, and how?
 
 - [ ] Host tests (`just test`) — pure logic in `clock-pure`
-- [ ] Wokwi simulation (`just act-ci`) — firmware behaviour without hardware
+- [ ] Wokwi simulation (`wokwi` CI job) — firmware behaviour without hardware
 - [ ] Hardware-in-the-loop — physical device required
 - [ ] Docs / config only — no automated verification needed
 

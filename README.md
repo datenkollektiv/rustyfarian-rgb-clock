@@ -1,22 +1,23 @@
-# ESP32 C6 RGB Clock
+# Rustyfarian RGB Clock
 
-<p>
+<p align="center">
   <img src="docs/rustyfarian-rgb-clock.png"
     alt="rustyfarian-rgb-clock — a smart RGB clock powered by ferriswheel, juggler, and stoker, running on ESP32-C6.
     A steampunk control panel showing the rustyfarian mascots tending a 12-LED clock face that reads 20:24.
     The mascots cover WS2812 LED control (ferriswheel), network &amp; messaging (juggler), and battery &amp; power management (stoker)."
-    width="1683">
+    width="720">
 </p>
 
 [![CI](https://github.com/datenkollektiv/rustyfarian-rgb-clock/actions/workflows/rust.yml/badge.svg)](https://github.com/datenkollektiv/rustyfarian-rgb-clock/actions/workflows/rust.yml)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-esp--toolchain-orange.svg)](https://github.com/esp-rs/rust)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#license)
+[![Rust](https://img.shields.io/badge/rust-1.95%2B-orange.svg)](https://www.rust-lang.org)
 [![cargo fmt](https://github.com/datenkollektiv/rustyfarian-rgb-clock/actions/workflows/fmt.yml/badge.svg)](https://github.com/datenkollektiv/rustyfarian-rgb-clock/actions/workflows/fmt.yml)
+[![cargo clippy](https://github.com/datenkollektiv/rustyfarian-rgb-clock/actions/workflows/clippy.yml/badge.svg)](https://github.com/datenkollektiv/rustyfarian-rgb-clock/actions/workflows/clippy.yml)
 [![cargo audit](https://github.com/datenkollektiv/rustyfarian-rgb-clock/actions/workflows/audit.yml/badge.svg)](https://github.com/datenkollektiv/rustyfarian-rgb-clock/actions/workflows/audit.yml)
 
-An ESP32-C6 RGB LED clock that displays time using 12 WS2812 NeoPixel LEDs arranged in a clock face. Time is received via MQTT from an external source.
+An RGB LED clock for the ESP32-C6 and ESP32-C3 that shows the time on a ring of 12 WS2812 NeoPixel LEDs, with the time received via MQTT.
 
-> Note: Parts of this library were developed with the assistance of AI tools.
+> **Note:** Large parts of this project (and its documentation) were developed with the assistance of AI tools.
 > All generated code has been reviewed and curated by the maintainer.
 
 ## Vision
@@ -34,6 +35,44 @@ An ESP32-C6 RGB LED clock that displays time using 12 WS2812 NeoPixel LEDs arran
 **Out of scope:** new clock features (those belong in other projects), hardware compatibility beyond ESP32-C6, and building a general-purpose testing framework.
 
 *Full vision, success signals, and open questions: [VISION.md](./VISION.md)*
+
+## Rustyfarian Philosophy
+
+This project embodies the principle of **extracting testable pure logic from hardware-specific code** — a pattern common in application development but rare in embedded Rust.
+
+- `clock-pure` maps the time to LED indices and colours with no hardware dependencies, so `just test` covers it on the host.
+- `clock-app` is the shared async clock loop (MQTT tick in, ring frame out) that both firmware tiers run unchanged.
+- The ESP-IDF firmware and `rustyfarian-esp-hal-rgb-clock` only wire LEDs, Wi-Fi and MQTT to that logic.
+
+## Rustyfarian Family
+
+`rustyfarian-rgb-clock` is one repo in the **rustyfarian** family — composable embedded-Rust libraries for battery-powered ESP32 field deployments (e.g. remote beehive monitoring over LoRaWAN).
+
+```mermaid
+graph TD
+    app["rustyfarian-rgb-clock<br/>reference application<br/>(this repo)"]
+    net["rustyfarian-network<br/>Wi-Fi · MQTT · LoRa · ESP-NOW · OTA"]
+    leds["rustyfarian-ws2812<br/>WS2812 / NeoPixel effects"]
+    pwr["rustyfarian-power<br/>battery · deep sleep · rail gating"]
+    periph["rustyfarian-peripherals<br/>pins · debounce · encoders · buttons · tones"]
+    app --> leds
+    app --> net
+    app -.-> pwr
+    app -.-> periph
+    net --> leds
+    net -.->|PowerRailGate| pwr
+```
+
+Solid edge: depends on it today.
+Dotted edge: a natural fit, not adopted yet.
+
+| Repo                                                                             | Role                                                    |
+|:---------------------------------------------------------------------------------|:--------------------------------------------------------|
+| [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)       | WS2812 / NeoPixel LED effects and drivers               |
+| [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network)     | Wi-Fi, MQTT, LoRa, ESP-NOW, OTA                         |
+| [rustyfarian-peripherals](https://github.com/datenkollektiv/rustyfarian-peripherals) | Pins, debounce, encoders, buttons, tones            |
+| [rustyfarian-power](https://github.com/datenkollektiv/rustyfarian-power)         | Battery monitoring, deep sleep, power rail gating       |
+| **rustyfarian-rgb-clock** (this repo)                                            | Reference application tying the libraries together      |
 
 ## Hardware
 
@@ -80,10 +119,11 @@ On Windows, set `ESPFLASH_PORT` before flashing:
 ESPFLASH_PORT=COM3 just flash
 ```
 
-Run all pre-commit checks (partition table, format, check, clippy, test)
+Run the host checks (format, partition table, host clippy, host tests), then the firmware check and clippy
 
 ```sh
 just verify
+just verify-fw
 ```
 
 The partition checks run first because they are the cheapest and guard the most expensive mistake.
@@ -131,7 +171,7 @@ The same clock also builds as a bare-metal `esp-hal` firmware for the ESP32-C3, 
 It needs the `esp` toolchain from `espup`, and the recipes take the chip as an argument (`c3` is the only one for now).
 
 ```sh
-just flash-hal c3
+just run-hal c3
 ```
 
 The ring shows a rainbow at boot and, once connected, a static 12:34:56 (blue LED 11, green LED 5, red LED 10) — the hands do not move until MQTT time lands.
@@ -187,7 +227,7 @@ An image that fails the check, or does not report the version its manifest promi
 Progress and results are published on `ota/status`.
 
 ```sh
-OTA_VERSION=0.3.7 just ota-artifact idf_c3_rgb_clock
+OTA_VERSION=0.3.7 just ota-image idf_c3_rgb_clock
 just ota-serve
 ```
 
@@ -238,7 +278,7 @@ rustyfarian-rgb-clock/           # This repository
     └── partition-fixtures/      # Fixtures for the validator's regression suite
 ```
 
-### Local Development
+## Development
 
 For developing alongside the external crates, `.cargo/config.toml` can redirect them to sibling working trees.
 Every dependency now resolves from crates.io, so the patches belong under the `crates-io` key:
@@ -256,8 +296,15 @@ Cargo keys `[patch]` sections by dependency source, so a leftover `[patch."https
 Builds quietly use the published version, and only a "patch was not used in the crate graph" warning hints at it.
 Leave the network entry out while verifying a release, or a local-only fix will mask a gap in the published crate.
 
-Comment out the patches to build against the published GitHub repos.
+Comment out the patches to build against the published crates.io versions.
 
 ## License
 
-MIT
+Licensed under either of
+
+- [Apache License, Version 2.0](LICENSE-APACHE)
+- [MIT License](LICENSE-MIT)
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.

@@ -56,7 +56,7 @@ sequenceDiagram
     participant D as Device
     participant S as just ota-serve
 
-    H->>H: just ota-artifact (build, hash, manifest, command.json)
+    H->>H: just ota-image (build, hash, manifest, command.json)
     H->>B: just ota-push → ota/command {manifest_url}
     B->>D: ota/command
     D->>S: GET manifest.json
@@ -93,7 +93,7 @@ echo "V1=$V1 V2=$V2 V3=$V3"
 | `V2` | Second update, so both slots carry the code under test      |
 | `V3` | Update after the refusal, clears the refused-version memory |
 
-`just ota-artifact` bakes the version into the image, so the device reports exactly what the manifest advertises.
+`just ota-image` bakes the version into the image, so the device reports exactly what the manifest advertises.
 Each run also records its manifest URL in `tmp/ota/$TARGET/command.json`, so `just ota-push "$TARGET"` always sends the last artefact staged for that target.
 After a completed run, the next run's `BASE` is the last version offered (`$V3`, or the highest optional-scenario version).
 
@@ -135,7 +135,7 @@ Slots alternate A → B → A, which is why `V2` comes before the rollback: step
 ### Step 1: push V1
 
 ```sh
-OTA_VERSION="$V1" just ota-artifact "$TARGET"
+OTA_VERSION="$V1" just ota-image "$TARGET"
 just ota-push "$TARGET"
 ```
 
@@ -146,7 +146,7 @@ Wait for `applied` before the next step: an update sent earlier is answered `fai
 
 ```sh
 just ota-push "$TARGET"
-just ota-command not-json
+just ota-pub not-json
 ```
 
 Neither may restart the device, and the clock must keep tracking `tick`.
@@ -154,7 +154,7 @@ Neither may restart the device, and the clock must keep tracking `tick`.
 ### Step 4: push V2
 
 ```sh
-OTA_VERSION="$V2" just ota-artifact "$TARGET"
+OTA_VERSION="$V2" just ota-image "$TARGET"
 just ota-push "$TARGET"
 ```
 
@@ -184,9 +184,9 @@ Expect `failed { previously_rolled_back }` and no download.
 Stage `V3` truncated, push it, then re-offer `V2`:
 
 ```sh
-OTA_VERSION="$V3" OTA_TRUNCATE=65536 just ota-artifact "$TARGET"
+OTA_VERSION="$V3" OTA_TRUNCATE=65536 just ota-image "$TARGET"
 just ota-push "$TARGET"
-OTA_VERSION="$V2" just ota-artifact "$TARGET"
+OTA_VERSION="$V2" just ota-image "$TARGET"
 just ota-push "$TARGET"
 ```
 
@@ -195,7 +195,7 @@ Expect `failed { checksum_mismatch }` and no reboot for `V3`, then still `failed
 ### Step 7: push V3
 
 ```sh
-OTA_VERSION="$V3" just ota-artifact "$TARGET"
+OTA_VERSION="$V3" just ota-image "$TARGET"
 just ota-push "$TARGET"
 ```
 
@@ -215,21 +215,21 @@ echo "V4=$V4 V5=$V5 V6=$V6"
 Truncated image, expect `failed { checksum_mismatch }` and no reboot:
 
 ```sh
-OTA_VERSION="$V4" OTA_TRUNCATE=65536 just ota-artifact "$TARGET"
+OTA_VERSION="$V4" OTA_TRUNCATE=65536 just ota-image "$TARGET"
 just ota-push "$TARGET"
 ```
 
 Unhealthy image, expect a restart after about 15 s, then `rolled_back { unhealthy }`:
 
 ```sh
-OTA_VARIANT=unhealthy OTA_VERSION="$V5" just ota-artifact "$TARGET"
+OTA_VARIANT=unhealthy OTA_VERSION="$V5" just ota-image "$TARGET"
 just ota-push "$TARGET"
 ```
 
 Health deadline, expect `rolled_back { health_deadline }` after about two minutes:
 
 ```sh
-OTA_TICK_TOPIC="tick-deaf-$TARGET-$V6" OTA_VERSION="$V6" just ota-artifact "$TARGET"
+OTA_TICK_TOPIC="tick-deaf-$TARGET-$V6" OTA_VERSION="$V6" just ota-image "$TARGET"
 just ota-push "$TARGET"
 ```
 
@@ -251,16 +251,23 @@ The next run's `BASE` is then `$V6`.
 <details>
 <summary><strong>Troubleshooting</strong></summary>
 
-| Symptom                                            | Likely cause                                                                                                                                                                                                                                                                                                           |
-|:---------------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `failed { pending_verify }`                        | The running image has not marked itself valid yet; an update is retained and applies by itself after `applied`, a rollback must be resent                                                                                                                                                                              |
-| `failed { up_to_date }` or `failed { downgrade }`  | The offered version is not newer than the running one; raise `BASE` and re-derive the ladder                                                                                                                                                                                                                           |
-| `failed { previously_rolled_back }` outside step 6 | That version was rolled back earlier; raise `BASE` above it and re-derive the ladder                                                                                                                                                                                                                                   |
-| `failed { report_pending }`                        | A rollback report is not acknowledged yet; the offer is retained and applied automatically once `rolled_back` is delivered                                                                                                                                                                                             |
-| `failed { attempt_unresolved }`                    | An earlier attempt record or an armed rollback request is still open; the offer is retained and applied once it resolves, a reset helps if it stays. If the boot log shows `boot records unusable`, an OTA record is corrupt or unreadable: send `{"action":"repair"}` (answered `repaired`), or `just flash-baseline` |
-| `failed { target_mismatch }`                       | The manifest was built for the other chip; check `$TARGET`                                                                                                                                                                                                                                                             |
-| `failed { manifest_fetch }`                        | `just ota-serve` is not running, or `OTA_HOST` is not reachable from the device                                                                                                                                                                                                                                        |
-| Ring frozen and no `ota/status` replies            | MQTT client deadlock; reset the device and see lore "OTA & Firmware Update"                                                                                                                                                                                                                                            |
-| Serial monitor silent after a job                  | Normal when idle; judge liveness by the ring and `ota/status`                                                                                                                                                                                                                                                          |
+| Symptom | Likely cause |
+|:--------|:-------------|
+| `failed { pending_verify }` | The running image has not marked itself valid yet |
+| `failed { up_to_date }` or `failed { downgrade }` | The offered version is not newer than the running one |
+| `failed { previously_rolled_back }` outside step 6 | That version was rolled back earlier |
+| `failed { report_pending }` | A rollback report is not acknowledged yet |
+| `failed { attempt_unresolved }` | An earlier attempt record or an armed rollback request is still open |
+| `failed { target_mismatch }` | The manifest was built for the other chip; check `$TARGET` |
+| `failed { manifest_fetch }` | `just ota-serve` is not running, or `OTA_HOST` is not reachable from the device |
+| Ring frozen and no `ota/status` replies | MQTT client deadlock; reset the device and see lore "OTA & Firmware Update" |
+| Serial monitor silent after a job | Normal when idle; judge liveness by the ring and `ota/status` |
+
+- `failed { pending_verify }`: an update is retained and applies by itself after `applied`; a rollback must be resent.
+- `failed { up_to_date }` or `failed { downgrade }`: raise `BASE` and re-derive the ladder.
+- `failed { previously_rolled_back }` outside step 6: raise `BASE` above it and re-derive the ladder.
+- `failed { report_pending }`: the offer is retained and applied automatically once `rolled_back` is delivered.
+- `failed { attempt_unresolved }`: the offer is retained and applied once it resolves; a reset helps if it stays.
+- `failed { attempt_unresolved }`: if the boot log shows `boot records unusable`, an OTA record is corrupt or unreadable: send `{"action":"repair"}` (answered `repaired`), or `just flash-baseline`.
 
 </details>
