@@ -82,5 +82,12 @@ fn main() {
     }
     println!("cargo:rustc-env=TICK_TOPIC={tick_topic}");
 
+    // Soft or sharp hands, baked by `option_env!` in main.rs. The firmware parses it with the
+    // same `clock_pure::parse_hands`, so guard and use site cannot disagree.
+    println!("cargo:rerun-if-env-changed=CLOCK_HANDS");
+    if let Err(e) = clock_pure::parse_hands(std::env::var("CLOCK_HANDS").ok().as_deref()) {
+        panic!("{e}; fix it in .env");
+    }
+
     embuild::espidf::sysenv::output();
 }

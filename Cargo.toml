@@ -103,4 +103,5 @@ rustyfarian-esp-idf-ws2812.workspace = true
 ferriswheel.workspace = true
 
 [build-dependencies]
+clock-pure.workspace = true
 embuild = "0.33"
