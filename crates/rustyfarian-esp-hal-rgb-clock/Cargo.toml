@@ -67,3 +67,6 @@ esp-storage = { version = "=0.10.0", default-features = false, features = ["crit
 esp-radio = { version = "=1.0.0-beta.1", default-features = false }
 embassy-net = { version = "=0.8.0", default-features = false }
 embassy-sync = { version = "=0.8.0", default-features = false }
+
+[build-dependencies]
+clock-pure = { path = "../clock-pure" }

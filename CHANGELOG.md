@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Opt-in soft hands: `CLOCK_HANDS=soft` in `.env` spreads each hand over its two adjacent LEDs; sharp stays the default (`clock-pure` `RenderMode`, `render_time_mode`, `parse_hands`).
+
 ### Changed
 
 - ESP-IDF `v5.3.3` → `v6.1`, as in rustyfarian-ws2812, so the firmware builds on Ubuntu 26.04 hosts: its `esp-clang` no longer needs `libxml2.so.2`.

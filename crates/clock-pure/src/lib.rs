@@ -484,6 +484,196 @@ pub fn prefill_or<'a>(value: Option<&'a str>, fallback: &'a str) -> &'a str {
     }
 }
 
+/// How the three hands are drawn on the ring.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RenderMode {
+    /// Each hand lights the single LED nearest its position (the default).
+    #[default]
+    Sharp,
+    /// Each hand spreads its brightness over the two LEDs that bracket its position.
+    Soft,
+}
+
+impl RenderMode {
+    /// Brightness factor that suits this mode.
+    ///
+    /// [`DEFAULT_BRIGHTNESS`] for `Sharp`, [`SOFT_BRIGHTNESS`] for `Soft`.
+    #[must_use]
+    pub const fn default_brightness(self) -> u8 {
+        match self {
+            Self::Sharp => DEFAULT_BRIGHTNESS,
+            Self::Soft => SOFT_BRIGHTNESS,
+        }
+    }
+}
+
+/// Brightness factor for [`RenderMode::Soft`].
+///
+/// PROVISIONAL: at [`DEFAULT_BRIGHTNESS`] the 5-step hands quantise too coarsely
+/// to read as a split, so soft mode starts higher.
+/// To be judged by eye on the rings at the hardware gate.
+pub const SOFT_BRIGHTNESS: u8 = 24;
+
+/// Full scale of the perceived-brightness domain used for the soft split.
+const PERCEIVED_MAX: u32 = 255;
+
+/// Gamma 2.0 curve mapping perceived brightness to a linear factor, both `0..=255`.
+const GAMMA: [u8; 256] = build_gamma();
+
+const fn build_gamma() -> [u8; 256] {
+    let mut table = [0u8; 256];
+    let mut p = 0usize;
+    while p < 256 {
+        // (p * p + 127) / 255 <= 255 for p <= 255, so the cast cannot truncate.
+        table[p] = ((p * p + 127) / 255) as u8;
+        p += 1;
+    }
+    table
+}
+
+/// Splits a hand at sub-step `sub` of `steps` into `(lower_p, upper_p)` perceived shares.
+///
+/// The shares always sum to [`PERCEIVED_MAX`].
+fn soft_split(sub: u32, steps: u32) -> (u32, u32) {
+    let upper = (sub * PERCEIVED_MAX + steps / 2) / steps;
+    (PERCEIVED_MAX - upper, upper)
+}
+
+/// Adds one soft hand to `state`, spread over `lower` and the next LED clockwise.
+fn add_soft_hand(
+    state: &mut [Rgb; LED_COUNT],
+    lower: usize,
+    sub: u32,
+    steps: u32,
+    color: Rgb,
+    brightness: u8,
+) {
+    let (lower_p, upper_p) = soft_split(sub, steps);
+    let upper = (lower + 1) % LED_COUNT;
+    for (idx, p) in [(lower, lower_p), (upper, upper_p)] {
+        let gamma = u32::from(GAMMA[p as usize]);
+        // (brightness * gamma + 127) / 255 <= brightness, so it fits in u8.
+        let factor = (u32::from(brightness) * gamma + 127) / 255;
+        let factor = u8::try_from(factor).unwrap_or(u8::MAX);
+        state[idx] = add_colors(state[idx], scale_color(color, factor));
+    }
+}
+
+/// Renders a time onto the 12-LED face in the given [`RenderMode`].
+///
+/// `Sharp` is exactly [`render_time`].
+/// `Soft` spreads each hand over the two LEDs bracketing its true position:
+/// the hour hand advances per minute (60 steps per LED), the minute hand per
+/// minute and the second hand per second (5 steps per LED each).
+/// The split is made in perceived brightness and mapped through a gamma curve,
+/// then overlapping hands blend with saturating addition.
+/// At sub-step 0 the soft hand lights exactly the sharp LED.
+///
+/// # Example
+///
+/// ```
+/// use clock_pure::{render_time_mode, ClockColors, RenderMode, SOFT_BRIGHTNESS};
+///
+/// let leds = render_time_mode(6, 7, 0, &ClockColors::default(), SOFT_BRIGHTNESS, RenderMode::Soft);
+/// assert_eq!(leds[0], (0, 9, 0)); // minute hand, 60 %
+/// assert_eq!(leds[1], (0, 4, 0)); // minute hand, 40 %
+/// ```
+#[must_use]
+pub fn render_time_mode(
+    hour: u8,
+    minute: u8,
+    second: u8,
+    colors: &ClockColors,
+    brightness: u8,
+    mode: RenderMode,
+) -> [Rgb; LED_COUNT] {
+    match mode {
+        RenderMode::Sharp => render_time(hour, minute, second, colors, brightness),
+        RenderMode::Soft => {
+            let mut state = [(0, 0, 0); LED_COUNT];
+            add_soft_hand(
+                &mut state,
+                hour_to_index(hour),
+                u32::from(minute % 60),
+                60,
+                colors.hour,
+                brightness,
+            );
+            add_soft_hand(
+                &mut state,
+                minute_to_index(minute),
+                u32::from(minute % 5),
+                5,
+                colors.minute,
+                brightness,
+            );
+            add_soft_hand(
+                &mut state,
+                second_to_index(second),
+                u32::from(second % 5),
+                5,
+                colors.second,
+                brightness,
+            );
+            state
+        }
+    }
+}
+
+/// Renders a validated tick in the given [`RenderMode`]; see [`render_time_mode`].
+#[must_use]
+pub fn render_tick_mode(
+    tick: &TickTime,
+    colors: &ClockColors,
+    brightness: u8,
+    mode: RenderMode,
+) -> [Rgb; LED_COUNT] {
+    render_time_mode(
+        tick.hour,
+        tick.minute,
+        tick.second,
+        colors,
+        brightness,
+        mode,
+    )
+}
+
+/// A `CLOCK_HANDS` value that is neither `sharp` nor `soft`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HandsParseError;
+
+impl core::fmt::Display for HandsParseError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("CLOCK_HANDS must be \"sharp\" or \"soft\"")
+    }
+}
+
+/// Parses the build-time `CLOCK_HANDS` value into a [`RenderMode`].
+///
+/// `None`, blank and `"sharp"` give `Sharp`; `"soft"` gives `Soft`.
+/// The value is trimmed like [`prefill_or`]; matching is case-sensitive.
+///
+/// # Errors
+///
+/// Returns [`HandsParseError`] for any other value.
+///
+/// # Example
+///
+/// ```
+/// use clock_pure::{parse_hands, RenderMode};
+///
+/// assert_eq!(parse_hands(None), Ok(RenderMode::Sharp));
+/// assert_eq!(parse_hands(Some(" soft ")), Ok(RenderMode::Soft));
+/// assert!(parse_hands(Some("Soft")).is_err());
+/// ```
+pub fn parse_hands(raw: Option<&str>) -> Result<RenderMode, HandsParseError> {
+    match raw.map(str::trim_ascii) {
+        None | Some("" | "sharp") => Ok(RenderMode::Sharp),
+        Some("soft") => Ok(RenderMode::Soft),
+        Some(_) => Err(HandsParseError),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1166,5 +1356,234 @@ mod tick_tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod soft_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    const B: u8 = SOFT_BRIGHTNESS;
+
+    fn soft(h: u8, m: u8, s: u8, colors: &ClockColors, b: u8) -> [Rgb; LED_COUNT] {
+        render_time_mode(h, m, s, colors, b, RenderMode::Soft)
+    }
+
+    fn lit(leds: &[Rgb; LED_COUNT]) -> impl Iterator<Item = usize> + '_ {
+        leds.iter()
+            .enumerate()
+            .filter(|(_, c)| **c != (0, 0, 0))
+            .map(|(i, _)| i)
+    }
+
+    #[test]
+    fn sharp_mode_is_render_time() {
+        let colors = ClockColors::default();
+        for h in 0..24 {
+            for m in 0..60 {
+                for s in 0..60 {
+                    assert_eq!(
+                        render_time_mode(h, m, s, &colors, DEFAULT_BRIGHTNESS, RenderMode::Sharp),
+                        render_time(h, m, s, &colors, DEFAULT_BRIGHTNESS)
+                    );
+                }
+            }
+        }
+        let tick = TickTime {
+            hour: 3,
+            minute: 37,
+            second: 30,
+        };
+        assert_eq!(
+            render_tick_mode(&tick, &colors, 10, RenderMode::Sharp),
+            render_tick(&tick, &colors, 10)
+        );
+    }
+
+    #[test]
+    fn sub_step_zero_equals_sharp() {
+        let colors = ClockColors::default();
+        for h in 0..24 {
+            for s in (0..60).step_by(5) {
+                assert_eq!(soft(h, 0, s, &colors, B), render_time(h, 0, s, &colors, B));
+            }
+        }
+    }
+
+    #[test]
+    fn minute_7_split() {
+        assert_eq!(soft_split(2, 5), (153, 102));
+        let leds = soft(6, 7, 0, &ClockColors::default(), B);
+        assert_eq!(leds[0], (0, 9, 0));
+        assert_eq!(leds[1], (0, 4, 0));
+    }
+
+    #[test]
+    fn hour_hand_at_half_past() {
+        assert_eq!(soft_split(30, 60), (127, 128));
+        let leds = soft(3, 30, 0, &ClockColors::default(), B);
+        assert_eq!(leds[2], (0, 0, 6));
+        assert_eq!(leds[3], (0, 0, 6));
+    }
+
+    #[test]
+    fn wraps_eleven_to_zero_per_hand() {
+        let colors = ClockColors::default();
+        // Hour: 12:30, minute and second hands parked far away at sub-step 0 are
+        // checked via the colour channels instead.
+        let leds = soft(12, 30, 0, &colors, B);
+        assert_ne!(leds[11].2, 0);
+        assert_ne!(leds[0].2, 0);
+        // Minute 2 -> LEDs 11 and 0 (green).
+        let leds = soft(6, 2, 30, &colors, B);
+        assert_ne!(leds[11].1, 0);
+        assert_ne!(leds[0].1, 0);
+        // Second 2 -> LEDs 11 and 0 (red).
+        let leds = soft(6, 30, 2, &colors, B);
+        assert_ne!(leds[11].0, 0);
+        assert_ne!(leds[0].0, 0);
+        // Each hand alone lights only adjacent LEDs.
+        let only = |c: ClockColors, h, m, s| {
+            let leds = soft(h, m, s, &c, B);
+            let idx: Vec<usize> = lit(&leds).collect();
+            assert_eq!(idx, [0, 11]);
+        };
+        let dark = (0, 0, 0);
+        only(
+            ClockColors {
+                hour: (0, 0, 1),
+                minute: dark,
+                second: dark,
+            },
+            12,
+            30,
+            0,
+        );
+        only(
+            ClockColors {
+                hour: dark,
+                minute: (0, 1, 0),
+                second: dark,
+            },
+            6,
+            2,
+            0,
+        );
+        only(
+            ClockColors {
+                hour: dark,
+                minute: dark,
+                second: (1, 0, 0),
+            },
+            6,
+            0,
+            2,
+        );
+    }
+
+    #[test]
+    fn overlap_blends() {
+        let leds = soft(6, 7, 7, &ClockColors::default(), B);
+        assert_eq!(leds[0], (9, 9, 0));
+        assert_eq!(leds[1], (4, 4, 0));
+        let colors = ClockColors {
+            hour: (0, 0, 0),
+            minute: (0, 30, 0),
+            second: (30, 0, 0),
+        };
+        let leds = soft(6, 5, 5, &colors, 255);
+        assert_eq!(leds[0], (255, 255, 0));
+    }
+
+    #[test]
+    fn perceived_total_is_constant() {
+        for steps in [5u32, 60] {
+            for sub in 0..steps {
+                let (l, u) = soft_split(sub, steps);
+                assert_eq!(l + u, 255);
+            }
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn upper_share_is_monotone(sub in 0u32..59, big in any::<bool>()) {
+            let steps = if big { 60 } else { 5 };
+            let sub = sub % (steps - 1);
+            prop_assert!(soft_split(sub, steps).1 <= soft_split(sub + 1, steps).1);
+        }
+    }
+
+    #[test]
+    fn gamma_table_properties() {
+        assert_eq!(GAMMA[0], 0);
+        assert_eq!(GAMMA[255], 255);
+        for p in 0..256usize {
+            assert!(usize::from(GAMMA[p]) <= p);
+            if p > 0 {
+                assert!(GAMMA[p - 1] <= GAMMA[p]);
+            }
+        }
+    }
+
+    #[test]
+    fn panic_free_over_all_u8() {
+        let colors = ClockColors::default();
+        for h in 0..=255u8 {
+            for m in (0..=255u8).step_by(7) {
+                for s in (0..=255u8).step_by(11) {
+                    let _ = soft(h, m, s, &colors, 255);
+                }
+            }
+        }
+        for v in 0..=255u8 {
+            let _ = soft(v, v, v, &colors, 255);
+            let _ = soft(v, 0, 255 - v, &colors, 255);
+            let _ = soft(0, v, 255 - v, &colors, 255);
+        }
+    }
+
+    #[test]
+    fn zero_brightness_is_dark() {
+        for m in 0..60 {
+            assert_eq!(
+                soft(5, m, m, &ClockColors::default(), 0),
+                [(0, 0, 0); LED_COUNT]
+            );
+        }
+    }
+
+    #[test]
+    fn parse_hands_table() {
+        let cases: [(Option<&str>, Option<RenderMode>); 11] = [
+            (None, Some(RenderMode::Sharp)),
+            (Some(""), Some(RenderMode::Sharp)),
+            (Some("  \t"), Some(RenderMode::Sharp)),
+            (Some("sharp"), Some(RenderMode::Sharp)),
+            (Some(" soft "), Some(RenderMode::Soft)),
+            (Some("soft\n"), Some(RenderMode::Soft)),
+            (Some("Soft"), None),
+            (Some("SOFT"), None),
+            (Some("softy"), None),
+            (Some("hard"), None),
+            (Some("sharp soft"), None),
+        ];
+        for (input, want) in cases {
+            assert_eq!(parse_hands(input).ok(), want, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn hands_error_display_names_the_key() {
+        let msg = std::format!("{HandsParseError}");
+        assert!(msg.contains("CLOCK_HANDS"));
+    }
+
+    #[test]
+    fn render_mode_defaults() {
+        assert_eq!(RenderMode::default(), RenderMode::Sharp);
+        assert_eq!(RenderMode::Sharp.default_brightness(), 10);
+        assert_eq!(RenderMode::Soft.default_brightness(), 24);
     }
 }
