@@ -1,5 +1,6 @@
 //! Re-runs when the portal prefill variables change and rejects a malformed `MQTT_PORT`.
 //! The values are baked by `option_env!` in `src/main.rs`; mirrors the root `build.rs`.
+//! Rejects an invalid `CLOCK_HANDS` (`sharp` or `soft`).
 //! Also resolves the MQTT tick topic (`TICK_TOPIC_OVERRIDE`) with the root build's validation.
 
 #[path = "../../build_support/tick_topic.rs"]
@@ -37,6 +38,13 @@ fn main() {
         if port.parse::<u16>().is_err() {
             panic!("MQTT_PORT=\"{port}\" is not a valid port number (0-65535); fix it in .env");
         }
+    }
+
+    // Soft or sharp hands, baked by `option_env!` in main.rs. The firmware parses it with the
+    // same `clock_pure::parse_hands`, so guard and use site cannot disagree.
+    println!("cargo:rerun-if-env-changed=CLOCK_HANDS");
+    if let Err(e) = clock_pure::parse_hands(std::env::var("CLOCK_HANDS").ok().as_deref()) {
+        panic!("{e}; fix it in .env");
     }
 
     if let Ok(id) = std::env::var("MQTT_CLIENT_ID") {

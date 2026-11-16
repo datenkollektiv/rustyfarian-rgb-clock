@@ -12,7 +12,7 @@ use core::fmt::Debug;
 use core::pin::pin;
 
 use clock_pure::{
-    parse_tick, render_tick, ClockColors, TickTime, LED_COUNT, PROVISION_COLOR,
+    parse_tick, render_tick_mode, ClockColors, RenderMode, TickTime, LED_COUNT, PROVISION_COLOR,
     PROVISION_MAX_BRIGHTNESS, PROVISION_MIN_BRIGHTNESS, PROVISION_PULSE_SPEED, RAINBOW_BRIGHTNESS,
     RAINBOW_FRAME_DELAY_MS, RAINBOW_SPEED,
 };
@@ -65,6 +65,8 @@ pub struct ClockAppConfig {
     pub colors: ClockColors,
     /// Brightness factor applied to the hands.
     pub brightness: u8,
+    /// Sharp (one LED per hand) or soft (two LEDs per hand) rendering.
+    pub mode: RenderMode,
     /// Tier diagnostics (heap, stack), called on the app's task with the moment:
     /// `"link up"` or `"first tick"`.
     pub diagnostics: Option<fn(&str)>,
@@ -175,7 +177,7 @@ async fn clock_loop<M: MqttClient, R: RingPort, H: Hooks>(
             log::info!("First tick received, leaving the rainbow");
             report(cfg.diagnostics, "first tick");
         }
-        let leds = render_tick(&tick, &cfg.colors, cfg.brightness);
+        let leds = render_tick_mode(&tick, &cfg.colors, cfg.brightness, cfg.mode);
         buffer = leds.map(|(r, g, b)| RGB8::new(r, g, b));
         show(ring, &buffer);
         hooks.tick_rendered(Instant::now());
@@ -292,6 +294,7 @@ mod tests {
             tick_topic: TICK,
             colors: ClockColors::default(),
             brightness: 10,
+            mode: RenderMode::Sharp,
             diagnostics: None,
         }
     }
@@ -335,6 +338,35 @@ mod tests {
         MockDriver::get().advance(Duration::from_millis(100));
         poll(&mut app);
         assert_eq!(frames.borrow().len(), shown, "rainbow must be gone");
+    }
+
+    #[test]
+    fn soft_mode_renders_two_led_hands() {
+        let _serial = serialised();
+        let link = MockLink::new();
+        let mqtt = MockMqttClient::new();
+        let mut ring = TestRing::default();
+        let frames = ring.frames.clone();
+        let soft = ClockAppConfig {
+            brightness: clock_pure::SOFT_BRIGHTNESS,
+            mode: RenderMode::Soft,
+            ..cfg()
+        };
+        let fut = run(&link, &mqtt, &mut ring, (), soft);
+        let mut app = pin!(fut);
+
+        mqtt.deliver(TICK, br#"{"hour":3,"minute":37,"second":30}"#);
+        poll(&mut app);
+        let want = clock_pure::render_time_mode(
+            3,
+            37,
+            30,
+            &ClockColors::default(),
+            clock_pure::SOFT_BRIGHTNESS,
+            RenderMode::Soft,
+        )
+        .map(|(r, g, b)| RGB8::new(r, g, b));
+        assert_eq!(*frames.borrow().last().unwrap(), want);
     }
 
     #[test]
