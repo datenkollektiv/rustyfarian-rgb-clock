@@ -5,7 +5,7 @@ use crate::ota::policy::HealthSignals;
 use crate::rgb_clock::IdfRing;
 use anyhow::Context;
 use clock_app::{ClockAppConfig, Hooks};
-use clock_pure::{encode_tick_ms, prefill_or, ClockColors, DEFAULT_BRIGHTNESS};
+use clock_pure::{encode_tick_ms, parse_hands, prefill_or, ClockColors};
 use esp_idf_hal::modem::Modem;
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
@@ -264,10 +264,13 @@ fn run_clock(
         .name("clock-app".into())
         .stack_size(CLOCK_APP_STACK_SIZE)
         .spawn(move || {
+            // build.rs rejects a bad CLOCK_HANDS, so the fallback to sharp is unreachable.
+            let mode = parse_hands(option_env!("CLOCK_HANDS")).unwrap_or_default();
             let cfg = ClockAppConfig {
                 tick_topic: MQTT_TOPIC,
                 colors: ClockColors::default(),
-                brightness: DEFAULT_BRIGHTNESS,
+                brightness: mode.default_brightness(),
+                mode,
                 diagnostics: Some(app_diagnostics),
             };
             esp_idf_hal::task::block_on(clock_app::run(&wifi, &app_mqtt, &mut ring, hooks, cfg));

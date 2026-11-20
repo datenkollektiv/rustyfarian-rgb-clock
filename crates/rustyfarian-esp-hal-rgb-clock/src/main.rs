@@ -107,6 +107,8 @@ const PREFILL_MQTT_USER: &str = match option_env!("MQTT_USER") {
 // as `build.rs` does when it guards them, so a padded value cannot pass the guard yet ship padded.
 const PREFILL_MQTT_PORT_RAW: Option<&str> = option_env!("MQTT_PORT");
 const PREFILL_MQTT_CLIENT_RAW: Option<&str> = option_env!("MQTT_CLIENT_ID");
+// `build.rs` guards CLOCK_HANDS with the same `clock_pure::parse_hands`, so it trims identically.
+const HANDS_RAW: Option<&str> = option_env!("CLOCK_HANDS");
 
 /// What the ring shows; switched between frames by `ring_task`.
 #[derive(Clone, Copy)]
@@ -506,10 +508,12 @@ async fn run_station(spawner: Spawner, handle: AsyncWifiHandle, cfg: &Provisioni
     spawner.spawn(mqtt_task(mqtt_runner).expect("mqtt task"));
     log::info!("Subscribed to tick topic {:?}", TICK_TOPIC);
 
+    let mode = clock_pure::parse_hands(HANDS_RAW).unwrap_or_default();
     let app_config = ClockAppConfig {
         tick_topic: TICK_TOPIC,
         colors: clock_pure::ClockColors::default(),
-        brightness: clock_pure::DEFAULT_BRIGHTNESS,
+        brightness: mode.default_brightness(),
+        mode,
         diagnostics: Some(diagnostics),
     };
     clock_app::run(&LINK, &mqtt, &mut HalRing, (), app_config).await
