@@ -167,7 +167,7 @@ accepted residual risk and the WPA2 hardening path.
 
 ## Bare-metal esp-hal clock (ESP32-C3)
 
-The same clock also builds as a bare-metal `esp-hal` firmware for the ESP32-C3, next to the ESP-IDF firmware, which stays the default and the only build with OTA.
+The same clock also builds as a bare-metal `esp-hal` firmware for the ESP32-C3, next to the ESP-IDF firmware, which stays the default and the only build with OTA, and only in its `ddi-lab` image.
 It needs the `esp` toolchain from `espup`, and the recipes take the chip as an argument (`c3` is the only one for now).
 
 ```sh
@@ -219,30 +219,57 @@ just monitor
 Pass the target for the C3 (`just flash idf_c3_rgb_clock`).
 The reasoning behind each safeguard is in the [OTA feature doc](docs/features/archive/ota-mvp-v1.md#decisions).
 
+### Remote bench
+
+`just save-image` builds a target and writes its merged whole-flash image, touching no board.
+`just bench-flash` saves that image to `tmp/bench/<example>.bin` and flashes it onto a part of the remote [rustyfarian-bench](https://github.com/datenkollektiv/rustyfarian-bench) without SSH.
+
+```sh
+just save-image idf_c3_rgb_clock tmp/bench/idf_c3_rgb_clock.bin
+just bench-flash bench-esp32c3-mini1 idf_c3_rgb_clock
+```
+
+- The image carries the same IDF bootloader and partition table as `just flash`, with a 4 MiB flash size from `scripts/chip-env.sh`.
+- `bench-flash` runs `pi-flash` from a rustyfarian-bench checkout, `../rustyfarian-bench` or `RUSTYFARIAN_BENCH_DIR`, until a bench release ships `flash`.
+- The part `bench-esp32c3-mini1` takes `idf_c3_rgb_clock`; the bench has no C6 part yet, and it refuses an image whose chip differs from the part's.
+- The bench keeps `nvs` and `phy_init`, so a provisioned clock stays provisioned, and erases `otadata`, so the board boots the new image from `ota_0`.
+- The image holds the `.env` portal prefill (Wi-Fi SSID, broker host and port, MQTT user, and the DDI URL in lab images), but never a password or token.
+- The bench keeps uploaded images until they are cleared by hand, and `save-image` refuses a path git would track.
+
 ## OTA updates
 
-The clock updates itself over the LAN: an MQTT command on `ota/command` points it at a manifest.
-It downloads and verifies the image into the inactive slot, reboots into it, and marks it valid only after a health check.
-An image that fails the check, or does not report the version its manifest promised, rolls back to the previous slot.
-Progress and results are published on `ota/status`.
+The default firmware has no over-the-air update code, so it is updated over serial with `just flash`.
+The `ddi-lab` feature compiles in the DDI client: the clock polls the fleet's DDI server with its own token, and an offered image is downloaded into the inactive slot.
+The clock reboots into the new image and marks it valid only after a health check: a fresh `tick`, MQTT connected, an IP lease, and a 30 s dwell.
+An image that is not healthy by the 120 s failure deadline rolls back to the previous slot.
+The server refuses an offer of the running version, or of a version that was rolled back, before any download.
+
+The `ddi-lab` image is for lab boards only and is never a release image: the DDI client has no TLS yet, so its base URL is plain HTTP.
+`DDI_BASE_URL` is compiled in, so it must name the DDI server with its tenant path, for example `http://<lab-host>:<port>/DEFAULT`.
+A `ddi-lab` build without it fails in `build.rs`.
+The recipes take `idf_c3_rgb_clock` as the argument for the C3.
 
 ```sh
-OTA_VERSION=0.3.7 just ota-image idf_c3_rgb_clock
-just ota-serve
+DDI_BASE_URL=http://<lab-host>:<port>/DEFAULT just flash-lab
 ```
 
-Then, from another shell, send the staged manifest and follow the result (broker from `.env`):
+A `ddi-lab` image on a board without a valid token opens the provisioning portal instead of running the clock.
+Enter the token from the fleet operator in the `ddi_token` field: 32 to 64 lowercase hex characters, one token per device.
+
+The device id is `rgb-clock-<mac4>`, where `<mac4>` is the last four hex digits of the MAC address.
+In a `ddi-lab` image the device id is also the DDI controller id, the MQTT user name and the MQTT client id.
+The `ddi-lab` image also subscribes to `rustyfarian/ota/<device-id>/nudge`; a message there asks for an early poll and carries no authority.
+
+The bundle for the fleet's ingest is a `.bin` with `.bin.sha256`, `.bin.version` and `.bin.chip` sidecars, written to `tmp/ddi-bundle/`.
+The version must be `MAJOR.MINOR.PATCH`.
 
 ```sh
-just ota-push idf_c3_rgb_clock
-just ota-status
+DDI_BASE_URL=http://<lab-host>:<port>/DEFAULT just ddi-bundle idf_c6_rgb_clock 0.3.1
 ```
 
-The offered version must be newer than the running one, and a version that was rolled back is refused until a different one is applied.
-This is a LAN demo: images are served over plain HTTP and integrity rests on SHA-256 alone.
-
-- Testing on hardware: [OTA hardware test runbook](docs/runbooks/ota-hardware-test.md)
-- Design, wire contract and status codes: [OTA feature doc](docs/features/archive/ota-mvp-v1.md)
+- Testing on hardware: [DDI bench test runbook](docs/runbooks/ddi-bench-test.md)
+- Design and decision: [ADR-007](docs/adr/007-ddi-is-the-only-ota-path.md) and the [DDI feature doc](docs/features/ddi-client-v1.md)
+- The MQTT OTA contract that DDI replaces: [archived OTA feature doc](docs/features/archive/ota-mvp-v1.md)
 
 ## Dependencies
 
@@ -254,10 +281,10 @@ All of them are consumed from crates.io; this repository has no git dependencies
 |:------------------------------|:----------------------|:-----------------------------------------------------------------------------|:------------------------------------------|
 | `ferriswheel`                 | 0.9.0                 | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | RGB ring effects (rainbow animations)     |
 | `rustyfarian-esp-idf-ws2812`  | 0.9.0                 | [rustyfarian-ws2812](https://github.com/datenkollektiv/rustyfarian-ws2812)   | ESP-IDF RMT driver for WS2812             |
-| `rustyfarian-esp-idf-network` | 0.7.0                 | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | Wi-Fi, MQTT, SoftAP provisioning, and OTA |
+| `rustyfarian-esp-idf-network` | 0.8.0                 | [rustyfarian-network](https://github.com/datenkollektiv/rustyfarian-network) | Wi-Fi, MQTT, SoftAP provisioning, and OTA |
 
 The separate `rustyfarian-esp-idf-wifi` and `rustyfarian-esp-idf-mqtt` crates were consolidated upstream into `rustyfarian-esp-idf-network`.
-This firmware enables its features explicitly (`wifi`, `mqtt`, `provisioning`, `ota`).
+This firmware enables its features explicitly (`wifi`, `mqtt`, `provisioning`); the `ddi-lab` image adds `ota-ddi` and `ota-ddi-insecure-http`.
 
 ## Project Structure
 
@@ -273,7 +300,8 @@ rustyfarian-rgb-clock/           # This repository
 └── scripts/                     # just recipe implementations
     ├── preflight.sh             # Build and validate before any flash
     ├── flash.sh                 # Build, then flash via flash-image.sh
-    ├── flash-image.sh           # Flash-only step (no build, no validation)
+    ├── flash-image.sh           # Flash-only step (no build, no validation), or save the merged image
+    ├── save-image.sh            # Build, then save the merged whole-flash image (no board)
     ├── check-partitions.sh      # Partition table validator
     └── partition-fixtures/      # Fixtures for the validator's regression suite
 ```

@@ -41,7 +41,7 @@ use rustyfarian_esp_hal_network::provisioning::{
     ProvisioningStore, ReentryGate, ReentryRequest, SchemaProfile,
 };
 use rustyfarian_esp_hal_network::wifi::{
-    link_task, AsyncWifiHandle, WiFiConfig, WiFiConfigExt, WiFiManager, WifiLink, WifiPowerSave,
+    link_task, AsyncWifiHandle, WiFiConfig, WiFiConfigExt, WiFiManager, WifiPowerSave,
 };
 use rustyfarian_esp_hal_ws2812::{buffer_size, Ws2812RmtBlocking, RMT_CLK_DIV};
 use static_cell::StaticCell;
@@ -207,7 +207,7 @@ async fn ring_task(mut ring: Ring) -> ! {
     }
 }
 
-static LINK: WifiLink = WifiLink::new();
+static LINK: WiFiManager = WiFiManager::new();
 
 #[embassy_executor::task]
 async fn net_task(mut runner: embassy_net::Runner<'static, Interface>) -> ! {

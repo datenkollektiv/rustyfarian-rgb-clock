@@ -25,6 +25,7 @@ Before that, empty OTA-URL and device-name fields made every submission fail wit
 `justfile` (`set dotenv-load`) loads the single shared `.env` into every build and `scripts/chip-env.sh` resolves only `MCU`/`TARGET`, so flashing `idf_c3_rgb_clock` after the C6 onboarding prefilled the portal with `MQTT_CLIENT_ID=rgb-clock-c6` (found 2026-09-28 on the C3 mini1).
 The client ID is in practice chip- and device-specific — two devices sharing one ID fight over the broker session.
 Fix: overwrite the prefill on the portal before saving (no rebuild needed); long-term, per-chip `.env` files plus a `build.rs` fail-fast guard on client-ID-vs-`MCU` mismatch.
+Superseded by [ADR-007](adr/007-ddi-is-the-only-ota-path.md) for the IDF firmware, which no longer reads `MQTT_CLIENT_ID`.
 
 **A `Stack protection fault` in task `main` right after `Provisioning event: Committed` is a 40-byte main-task stack overflow inside the network crate, not a provisioning failure.**
 `ProvisioningSession::wait_committed` in `rustyfarian-esp-idf-network 0.5.0` does `guard.committed.clone()` on the caller's stack, and `Option<ProvisioningConfig>` is over a kilobyte of fixed-capacity `heapless` strings, which overruns `CONFIG_ESP_MAIN_TASK_STACK_SIZE=8000` after the portal's own frames.
@@ -161,11 +162,13 @@ Fix: start the first app slot at the next `0x10000` boundary and accept the padd
 **`uxTaskGetStackHighWaterMark` returns bytes on ESP-IDF, not the words the FreeRTOS docs and the generated binding comment describe.**
 ESP-IDF's RISC-V and Xtensa ports define `portSTACK_TYPE` as `uint8_t` (`StackType_t = u8` in the `esp-idf-sys` bindings), so one unit is one byte; multiplying by four, as upstream FreeRTOS guidance suggests, overstates free stack fourfold and hides an imminent overflow.
 The OTA worker logs this figure after every job to right-size `WORKER_STACK_BYTES`; read it as bytes and compare directly with `std::thread::Builder::stack_size`, which is also bytes.
+Superseded by [ADR-007](adr/007-ddi-is-the-only-ota-path.md) for the MQTT OTA worker, which the firmware no longer has.
 
 **Serial silence after an OTA job is expected, but it is not proof of health — a hung MQTT client looks exactly the same.**
 Tick handling logs at `log::debug!` while the firmware prints only `info` and above, and a failed OTA job ends on the `OTA stack high-water mark` line without rebooting, so a healthy idle clock prints nothing.
 The MQTT deadlock below is just as silent, so judge liveness only from outside the serial console: the ring keeps tracking the published time, and a fresh `ota/status` message still arrives.
 Found 2026-09-28 on the ESP32-C3: silence after the `checksum_mismatch` step was healthy, silence after a malformed command was the deadlock.
+Superseded by [ADR-007](adr/007-ddi-is-the-only-ota-path.md): the firmware no longer publishes `ota/status`, so liveness cannot be judged from it.
 
 **`try_publish` from inside an `on_message` callback deadlocks the MQTT client for good; the ring freezes and only a reset recovers.**
 `rustyfarian-esp-idf-network 0.5.0` runs `on_message` while the received event is still borrowed, and the ESP-IDF MQTT task waits for that event to be released while holding its API lock, so `enqueue` from the callback thread never returns.
@@ -181,6 +184,7 @@ Upstream 0.5.1 (guard in git `511b37f`, ADR 017 in `4ac3d42`) fixes both paths: 
 esp-idf-hal 0.47 `TxChannelDriver` registers a flash-resident `on_trans_done` callback, which ESP-IDF rejects when the RMT ISR is IRAM-safe (`E rmt: … on_trans_done callback not in IRAM`), so `app_main` returns and an OTA image with it never marks itself valid.
 Leave the setting unset: with the default, a 12-LED ring stayed clean through a 17 s OTA download on the C3 (2026-11-01), and the bootloader rolled the broken image back on the next reset.
 To judge ring glitches during OTA, publish identical ticks on a private `OTA_TICK_TOPIC`: a moving sweep looks like flicker by itself, and the shared `tick` publisher flips the image between two valid times.
+Superseded by [ADR-007](adr/007-ddi-is-the-only-ota-path.md): `OTA_TICK_TOPIC` no longer exists.
 
 ---
 
@@ -203,6 +207,12 @@ Fix: derive expected LEDs for a hardware check from `clock_pure::render_time` or
 WS2812 strips use thin wires that fracture easily.
 A momentary open circuit in the data chain causes all LEDs from that point onward to go dark or flash unexpectedly — while the firmware reports no errors and `just monitor` shows normal tick messages.
 Diagnostic: flex the cable while watching the LEDs; if the symptom tracks movement, resolder or replace the wire.
+
+**The remote bench names a board only from its deployed parts file, so `just bench-flash <part>` fails with `422 … is not attached or not verified` even when the probe reads that board's MAC.**
+A part added to the rustyfarian-bench checkout's `deploy/ansible/parts.toml` reaches the bench only through `pi-provision`; until then `pi-boards` shows the MAC with an empty `NAME`.
+`bench-flash` always sends `--part`, and the bench client refuses `--port` next to `--part`, so the recipe cannot fall back to the port.
+Workaround (2026-11-25, `rgb-clock-dbbd` on `/dev/ttyUSB0`): match the MAC from `pi-boards` against `parts.toml`, then run the bench's `pi-flash --port <port> <absolute image> --wait` on the image `bench-flash` saved under `tmp/bench/`.
+A board "plugged in" that never shows as `/dev/cu.usb*` on the laptop may be on the bench Pi; `pi-boards` (no `--probe`) lists it without a reset.
 
 ---
 

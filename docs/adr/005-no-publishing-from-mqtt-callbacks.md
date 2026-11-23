@@ -3,6 +3,7 @@
 ## Status
 
 Accepted — 2026-09-28.
+Amended by [ADR-007](007-ddi-is-the-only-ota-path.md).
 
 ## Context
 

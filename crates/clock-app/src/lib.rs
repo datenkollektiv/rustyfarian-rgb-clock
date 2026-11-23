@@ -42,7 +42,8 @@ pub trait RingPort {
 
 /// Tier-specific extension points; every method has a do-nothing default.
 pub trait Hooks {
-    /// Called once after each valid tick has been drawn.
+    /// Called once after each valid tick has been drawn; a tick whose ring write
+    /// fails is not drawn and does not call it.
     fn tick_rendered(&mut self, _at: Instant) {}
 
     /// Called for every inbound message whose topic is not the tick topic.
@@ -179,8 +180,11 @@ async fn clock_loop<M: MqttClient, R: RingPort, H: Hooks>(
         }
         let leds = render_tick_mode(&tick, &cfg.colors, cfg.brightness, cfg.mode);
         buffer = leds.map(|(r, g, b)| RGB8::new(r, g, b));
-        show(ring, &buffer);
-        hooks.tick_rendered(Instant::now());
+        // Only a frame that reached the ring counts as rendered: the lab image's health
+        // policy reads this signal, and an image whose every write fails must not pass.
+        if show(ring, &buffer) {
+            hooks.tick_rendered(Instant::now());
+        }
     }
 }
 
@@ -211,14 +215,21 @@ fn rainbow_frame<R: RingPort>(
     ring: &mut R,
 ) {
     match rainbow.update(buffer) {
-        Ok(()) => show(ring, buffer),
+        Ok(()) => {
+            show(ring, buffer);
+        }
         Err(e) => log::warn!("Rainbow update failed: {:?}", e),
     }
 }
 
-fn show<R: RingPort>(ring: &mut R, pixels: &[RGB8; LED_COUNT]) {
-    if let Err(e) = ring.show(pixels) {
-        log::warn!("Ring write failed: {:?}", e);
+/// Writes one frame and logs a failed write; returns whether the frame reached the ring.
+fn show<R: RingPort>(ring: &mut R, pixels: &[RGB8; LED_COUNT]) -> bool {
+    match ring.show(pixels) {
+        Ok(()) => true,
+        Err(e) => {
+            log::warn!("Ring write failed: {:?}", e);
+            false
+        }
     }
 }
 
@@ -265,6 +276,21 @@ mod tests {
         fn show(&mut self, pixels: &[RGB8; LED_COUNT]) -> Result<(), Self::Error> {
             self.frames.borrow_mut().push(*pixels);
             Ok(())
+        }
+    }
+
+    /// A ring whose every write fails, as with a broken RMT channel; counts the attempts.
+    #[derive(Default)]
+    struct FailingRing {
+        writes: Rc<RefCell<u32>>,
+    }
+
+    impl RingPort for FailingRing {
+        type Error = ();
+
+        fn show(&mut self, _pixels: &[RGB8; LED_COUNT]) -> Result<(), Self::Error> {
+            *self.writes.borrow_mut() += 1;
+            Err(())
         }
     }
 
@@ -460,6 +486,27 @@ mod tests {
         mqtt.deliver(TICK, b"garbage");
         poll(&mut app);
         assert_eq!(*rendered.borrow(), 3);
+    }
+
+    #[test]
+    fn failed_ring_write_is_not_a_rendered_tick() {
+        let _serial = serialised();
+        let link = MockLink::new();
+        let mqtt = MockMqttClient::new();
+        let mut ring = FailingRing::default();
+        let writes = ring.writes.clone();
+        let rec = Recorder::default();
+        let rendered = rec.rendered.clone();
+        let fut = run(&link, &mqtt, &mut ring, rec, cfg());
+        let mut app = pin!(fut);
+
+        poll(&mut app);
+        let before = *writes.borrow();
+        mqtt.deliver(TICK, br#"{"hour":3,"minute":15,"second":30}"#);
+        mqtt.deliver(TICK, br#"{"hour":3,"minute":15,"second":31}"#);
+        poll(&mut app);
+        assert_eq!(*writes.borrow(), before + 2, "both ticks reached the ring");
+        assert_eq!(*rendered.borrow(), 0);
     }
 
     #[test]

@@ -5,6 +5,8 @@ set -euo pipefail
 #
 # Usage: scripts/check-image-size.sh <idf_{chip}_{name}> [elf] [partitions.csv]
 #   elf defaults to the release binary under $CARGO_TARGET_DIR (or ./target).
+#   CHECK_IMAGE_BIN=<file> measures that already generated app image instead of
+#   generating one from the ELF (scripts/ddi-bundle.sh checks its bundle this way).
 #
 # scripts/check-partitions.sh only validates the table's geometry against a
 # historical size constant. This script measures what an OTA update would really
@@ -26,7 +28,10 @@ target_dir="${CARGO_TARGET_DIR:-target}"
 elf="${2:-$target_dir/$TARGET/release/rustyfarian-rgb-clock}"
 csv="${3:-$ROOT_DIR/partitions.csv}"
 
-if [ ! -f "$elf" ]; then
+image="${CHECK_IMAGE_BIN:-}"
+if [ -n "$image" ]; then
+    [ -f "$image" ] || { printf 'Error: CHECK_IMAGE_BIN=%s not found\n' "$image" >&2; exit 1; }
+elif [ ! -f "$elf" ]; then
     printf 'Error: no release ELF at %s — run `just build %s` first.\n' "$elf" "$example" >&2
     exit 1
 fi
@@ -43,18 +48,22 @@ to_bytes() {
     esac
 }
 
-mkdir -p "$ROOT_DIR/tmp"
-bin="$ROOT_DIR/tmp/${example}-app.bin"
-rm -f "$bin"
+if [ -n "$image" ]; then
+    bin="$image"
+else
+    mkdir -p "$ROOT_DIR/tmp"
+    bin="$ROOT_DIR/tmp/${example}-app.bin"
+    rm -f "$bin"
 
-# Without --merge, espflash writes only the application image — the bytes an OTA
-# client downloads and writes into a slot — not the bootloader or table.
-printf 'Generating app image for %s (MCU=%s)...\n' "$example" "$MCU" >&2
-espflash save-image --chip "$MCU" "$elf" "$bin" >&2
+    # Without --merge, espflash writes only the application image — the bytes an OTA
+    # client downloads and writes into a slot — not the bootloader or table.
+    printf 'Generating app image for %s (MCU=%s)...\n' "$example" "$MCU" >&2
+    espflash save-image --chip "$MCU" "$elf" "$bin" >&2
 
-if [ ! -f "$bin" ]; then
-    printf 'Error: espflash save-image produced no file at %s\n' "$bin" >&2
-    exit 1
+    if [ ! -f "$bin" ]; then
+        printf 'Error: espflash save-image produced no file at %s\n' "$bin" >&2
+        exit 1
+    fi
 fi
 image_size=$(wc -c < "$bin" | tr -d ' ')
 

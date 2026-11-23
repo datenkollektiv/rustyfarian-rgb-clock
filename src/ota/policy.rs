@@ -33,7 +33,7 @@ pub struct HealthSignals {
     pub last_tick_ms: AtomicU32,
 }
 
-/// The predicate handed to `OtaHandle::run_health_policy`: a fresh tick, MQTT
+/// The predicate handed to `DdiHandle::run_health_policy`: a fresh tick, MQTT
 /// connected, and an IPv4 lease. `ready` is the link's ready flag (associated with an
 /// IP address), set from `WiFiManager::subscribe_ready` because the manager itself
 /// lives on the app thread. The lease is latched: a lease once held counts.

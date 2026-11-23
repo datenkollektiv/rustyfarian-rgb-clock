@@ -4,6 +4,7 @@ set -euo pipefail
 # Usage: scripts/flash.sh <target> [port]
 #   target: idf_{chip}_{name}  e.g. idf_c6_rgb_clock, idf_c3_rgb_clock
 #   port:   optional serial device; omit to let espflash choose
+#   FIRMWARE_FEATURES=<cargo features> flashes a feature image (see preflight.sh)
 #
 # Does not open the serial monitor — run `just monitor` after flashing.
 #

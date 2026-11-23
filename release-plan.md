@@ -21,6 +21,7 @@ Draft of 2026-11-12, derived from the `v0.2.0` release; confirm before the first
 - [ ] Every rustyfarian dependency resolves from crates.io (`deny.toml` `allow-git = []`, no `[patch]` active in `.cargo/config.toml`).
 - [ ] `just ci` passes (format, partitions, flash-script tests, deny, check, clippy, tests).
 - [ ] `just build idf_c6_rgb_clock`, `just build idf_c3_rgb_clock`, `just build-unhealthy`, `just build-hal c3` and `just image-check` pass.
+- [ ] `just build-lab` passes; the `ddi-lab` image is for lab boards and is never a release image.
 - [ ] Hardware run on every image the release ships, per the open feature docs' `gate: hardware` notes.
 - [ ] `CHANGELOG.md` `[Unreleased]` covers every commit since the last tag.
 - [ ] `pre-release-checklist.md` security and hygiene items pass.

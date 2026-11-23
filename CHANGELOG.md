@@ -10,11 +10,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - Opt-in soft hands: `CLOCK_HANDS=soft` in `.env` spreads each hand over its two adjacent LEDs; sharp stays the default (`clock-pure` `RenderMode`, `render_time_mode`, `parse_hands`).
+- DDI client for lab boards: the `ddi-lab` feature compiles the upstream DDI client (`ota-ddi`, `ota-ddi-insecure-http`) into the firmware; a `ddi-lab` image is for lab boards only and is never a release image (ADR-007).
+- `ddi-lab` builds need `DDI_BASE_URL` at build time, and their portal requires a `ddi_token` field (32 to 64 lowercase hex characters, one per device).
+- The `unhealthy` demo feature now implies `ddi-lab`.
+- A `ddi-lab` image that is pending verification and would need the portal rolls back to the previous image instead of waiting there.
+- A `ddi-lab` image counts a tick as healthy only when the ring write succeeded.
+- just: `build-lab`, `flash-lab` and `ddi-bundle` (writes `tmp/ddi-bundle/<example>-v<version>.bin` with `.sha256`, `.version` and `.chip` sidecars).
+- just: `save-image example image` writes the merged whole-flash image (IDF bootloader at 0x0, partition table, app) without touching a board, and refuses a path git would track.
+- just: `bench-flash part example` saves the image to `tmp/bench/` and flashes it onto a rustyfarian-bench part through the bench checkout's `pi-flash`, without SSH.
+- `scripts/chip-env.sh` sets `FLASH_SIZE` (`4mb` for both targets), which `save-image` needs because it cannot read the size from a chip.
 
 ### Changed
 
 - ESP-IDF `v5.3.3` → `v6.1`, as in rustyfarian-ws2812, so the firmware builds on Ubuntu 26.04 hosts: its `esp-clang` no longer needs `libxml2.so.2`.
-- The firmware declares the managed `espressif/mqtt` component (pinned to 1.1.0), because ESP-IDF v6 moved esp-mqtt out of the IDF tree and `rustyfarian-esp-idf-network` 0.7.0 does not declare it yet.
+- ESP-IDF v6 moved esp-mqtt out of the IDF tree; `rustyfarian-esp-idf-network` 0.8.0 declares the managed `espressif/mqtt` component, so the firmware does not.
 - `.cargo/config.toml` is now committed (was the `.cargo/config.toml.dist` template), and `just setup-cargo-config` is gone; it carries the ESP-IDF pin, so a fresh clone builds without a setup step.
 - ESP-IDF v6.1 filled the C6 OTA slot to 99%, so the firmware now trims flash:
   - `sdkconfig.defaults` drops the MQTT SSL/WebSocket transports, the HTTPS client, the CA bundle, the TLS server and the DS peripheral.
@@ -24,12 +33,22 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `sdkconfig.defaults` pins `CONFIG_ESPTOOLPY_FLASHSIZE_2MB=y`, because the flash size selects the C6 MMU page size that bootloaders already in the field were built with.
 - CI firmware jobs run on `ubuntu-latest` again and install `libclang-21-dev` with a pinned `LIBCLANG_PATH`, because bindgen no longer gets `libclang` from `esp-clang`.
 - just: `verify` is now a read-only, host-only gate; the firmware `check` and `clippy` moved to the new `verify-fw` gate, which `ci` runs and `pre-commit` no longer does (family recipe contract).
-- just: `ota-artifact` → `ota-image` (family recipe contract).
-- just: `ota-command` → `ota-pub` (family recipe contract).
 - just: `flash-hal` → `run-hal` (family recipe contract); the new `flash-hal` flashes without opening the monitor.
 - just: `act-ci`, `act-fmt`, `act-audit`, `act-all` → `act job` (family recipe contract).
 - just: `act` runs the family `catthehacker/ubuntu:act-latest` image; the repo's own `.github/act` image is gone (family recipe contract).
 - just: `setup [component]` installs the pinned nightly, ldproxy, espflash, espup and the cargo tools, and every CI job has a `ci-<job>` recipe (family recipe contract).
+- The device id is `rgb-clock-<mac4>` in every build (was `rgb-clock`), where `<mac4>` is the last four hex digits of the MAC address.
+- The ESP-IDF firmware no longer reads `MQTT_CLIENT_ID`; the esp-hal build still does.
+- The ESP-IDF firmware enables `rustyfarian-esp-idf-network` features `wifi`, `mqtt` and `provisioning` only; the default build carries no OTA code.
+- `rustyfarian-esp-idf-network`, `rustyfarian-esp-hal-network` and `juggler` `0.7.0` → `0.8.0` from crates.io, which carries the DDI client; no git or path dependency is left.
+- just: `clippy` takes a chip target like `check` (e.g. `just clippy idf_c3_rgb_clock`); `verify-fw` still lints the C6.
+
+### Removed
+
+- MQTT OTA command intake: the firmware no longer subscribes to `ota/command` or publishes `ota/status`, and no MQTT message installs or rolls back an image (ADR-007).
+- just recipes `ota-artifact`, `ota-image`, `ota-serve`, `ota-push`, `ota-rollback`, `ota-pub` and `ota-status`, and the scripts `scripts/ota-artifact.sh` and `scripts/ota-mqtt.sh`.
+- `.env` keys `OTA_HOST`, `OTA_PORT`, `OTA_VARIANT`, `OTA_VERSION`, `OTA_TRUNCATE` and `OTA_TICK_TOPIC`.
+- Boards that run an MQTT OTA image move to the DDI image by serial flash, `just erase-flash` and re-provisioning.
 
 ## [0.3.0] - 2026-11-12
 

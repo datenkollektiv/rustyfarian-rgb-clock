@@ -562,7 +562,7 @@ Logs are in `tmp/c3-onboard-*.txt` and `tmp/c3-ota-status-log.txt`, not committe
      - `not-json` gave `failed { command_invalid }`.
      - A burst of 15 malformed commands gave 11 `failed` statuses plus the log line `4 OTA rejection status(es) dropped under load`, and a follow-up probe still got a fresh `failed`.
      - A second valid command during the 0.3.5 → 0.3.6 download gave `failed { busy }`, the first update completed (`swap_pending`, `applied { 0.3.6 }`), and 0.3.6 marked itself valid on fresh ticks.
-9. [x] Re-run the core sequence of [`docs/runbooks/ota-hardware-test.md`](../../runbooks/ota-hardware-test.md) after the two external OTA reviews, on network git `5ed82e6`.
+9. [x] Re-run the core sequence of `docs/runbooks/ota-hardware-test.md` (removed 2026-11-23, see ADR-007) after the two external OTA reviews, on network git `5ed82e6`.
    - The reviews covered failed-write abort, ordered attempt writes, fail-safe reconciliation, NVS read errors, and refused-version memory.
    - Done 2026-10-04 on the C3: all seven steps passed as specified, including `failed { previously_rolled_back }` on re-offering the rolled-back version and `applied` for the next one.
 

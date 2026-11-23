@@ -17,9 +17,9 @@ Covers: build verification, the upstream release-wave runbook, toolchain pins, s
 ### Firmware compile checks
 
 - `just check` / `just build` — firmware for `idf_c6_rgb_clock` (ESP-IDF, `riscv32imac-esp-espidf`).
-- `just clippy` — clippy on the firmware target.
+- `just clippy` — clippy on the firmware target (C6 by default; `just clippy idf_c3_rgb_clock` for the C3).
 - `just lock-ci` — resolve dependencies the way CI does, without the local `[patch]` redirects in `.cargo/config.toml`.
-  Run this after every pin change: local builds use the sibling working trees, CI uses the published crates and the git pin.
+  Run this after every pin change: local builds use the sibling working trees, CI uses the published crates.
 
 ### Hardware test
 

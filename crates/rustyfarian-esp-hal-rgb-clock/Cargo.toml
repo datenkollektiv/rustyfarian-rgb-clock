@@ -55,8 +55,8 @@ clock-app = { path = "../clock-app" }
 # so the graph has one juggler (docs/adr/006-one-clock-app-on-both-tiers.md).
 # `default-features = false` keeps the `ws2812` feature off: our own ws2812
 # dependency above is the only one.
-rustyfarian-esp-hal-network = { version = "0.7.0", default-features = false, features = ["provisioning", "mqtt", "embassy", "rt"] }
-juggler = { version = "0.7.0", default-features = false, features = ["wifi", "mqtt"] }
+rustyfarian-esp-hal-network = { version = "0.8.0", default-features = false, features = ["provisioning", "mqtt", "embassy", "rt"] }
+juggler = { version = "0.8.0", default-features = false, features = ["wifi", "mqtt"] }
 static_cell = "2.1"
 heapless = "0.9"
 # Same exact pins as the network crate, so the graph keeps one version of each.
