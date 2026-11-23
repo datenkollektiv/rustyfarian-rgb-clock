@@ -5,30 +5,42 @@
 # explicitly pass --target to override it.
 
 # Load the optional `.env` so its non-secret portal-prefill values (WIFI_SSID,
-# MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_CLIENT_ID) and OTA server settings
-# (OTA_HOST, OTA_PORT) reach the `cargo` build and OTA tooling behind these recipes.
-# A missing `.env` is a no-op — the build falls back to hardcoded defaults and
-# auto-detection. See `.env.example`.
-set dotenv-load := true
+# MQTT_HOST, MQTT_PORT, MQTT_USER) and the lab image's DDI_BASE_URL reach the
+# `cargo` build behind these recipes.
+# A missing `.env` is a no-op — the build falls back to hardcoded defaults, and
+# only the `ddi-lab` builds refuse to start without DDI_BASE_URL. See `.env.example`.
+set dotenv-load
 
 host_target := `scripts/host-target.sh`
-esp_target  := "riscv32imac-esp-espidf"
+esp_target := "riscv32imac-esp-espidf"
 
 # The host-testable crates (no hardware dependencies), shared by every host recipe.
-host_pkgs   := "-p clock-pure -p clock-app"
+host_pkgs := "-p clock-pure -p clock-app"
+
+# `ddi-lab` builds need a compiled-in DDI_BASE_URL (build.rs refuses a build without it).
+# Check, lint and CI size builds are never flashed, so they fall back to a placeholder;
+# `build-lab`, `flash-lab` and `ddi-bundle` take the real one from `.env` or the shell.
+# An empty DDI_BASE_URL counts as unset: `env()` would hand the empty string to build.rs.
+ddi_check_url := if env("DDI_BASE_URL", "") == "" { "http://ddi.invalid/DEFAULT" } else { env("DDI_BASE_URL") }
 
 # act: a local rustyfarian-ci checkout if RUSTYFARIAN_CI points at one, otherwise the pushed @v1.
-ci_dir       := env("RUSTYFARIAN_CI", "")
+ci_dir := env("RUSTYFARIAN_CI", "")
 ci_repo_flag := if ci_dir != "" { '--local-repository "datenkollektiv/rustyfarian-ci@v1=' + absolute_path(ci_dir) + '"' } else { "" }
+
+# bench-flash: the rustyfarian-bench checkout whose `pi-flash` uploads to the remote bench.
+bench_dir := env("RUSTYFARIAN_BENCH_DIR", justfile_directory() / "../rustyfarian-bench")
 
 # Build RAM disk (macOS, optional): when `just ramdisk attach` has mounted
 # /Volumes/RustBuilds, cargo's target-dir is redirected there via CARGO_TARGET_DIR
 # to spare the SSD and speed up esp-idf-sys rebuilds. Falls back to ./target when the
 # disk is not mounted, so Linux/CI (which never mount it) are unaffected.
 # rust-analyzer keeps using ./target (it doesn't inherit this).
-ramdisk         := "/Volumes/RustBuilds"
+# RUSTBUILDS_RAMDISK (shell or `.env`) overrides the path; a nonexistent one, e.g.
+# RUSTBUILDS_RAMDISK=/nonexistent, keeps builds in ./target, and unlike `--set ramdisk`
+# it also reaches the nested `just` calls inside recipes (ci-build, setup, run).
+ramdisk := env("RUSTBUILDS_RAMDISK", "/Volumes/RustBuilds")
 ramdisk_mounted := shell(justfile_directory() + '/scripts/ramdisk-mounted.sh "' + ramdisk + '"')
-idf_dir         := if ramdisk_mounted == "true" { ramdisk + "/targets/idf/" + file_name(justfile_directory()) } else { "target" }
+idf_dir := if ramdisk_mounted == "true" { ramdisk + "/targets/idf/" + file_name(justfile_directory()) } else { "target" }
 export CARGO_TARGET_DIR := idf_dir
 
 # Only when the target-dir lives on the RAM disk, install the heavy ESP-IDF tools to
@@ -43,11 +55,11 @@ export ESP_IDF_TOOLS_INSTALL_DIR := if ramdisk_mounted == "true" { "global" } el
 # the IDF output, because `-Zbuild-std=core,alloc` artifacts must not mix with the
 # IDF `std` ones. The explicit --target-dir beats the exported CARGO_TARGET_DIR.
 # The chip's target triple and feature come from scripts/hal-chip-env.sh.
-hal_dir    := if ramdisk_mounted == "true" { ramdisk + "/targets/hal/" + file_name(justfile_directory()) } else { "target/hal" }
+hal_dir := if ramdisk_mounted == "true" { ramdisk + "/targets/hal/" + file_name(justfile_directory()) } else { "target/hal" }
 # Link-time floor for the main stack (the portal's POST /save peaks near 20.5 KiB).
 # Exported inside the `*-hal` recipes only, so the IDF build never sees it.
 hal_stack_min := "24576"
-hal_flags  := "-Zbuild-std=core,alloc --target-dir " + hal_dir + " -p rustyfarian-esp-hal-rgb-clock"
+hal_flags := "-Zbuild-std=core,alloc --target-dir " + hal_dir + " -p rustyfarian-esp-hal-rgb-clock"
 
 # list available recipes (default)
 _default:
@@ -67,9 +79,9 @@ _default:
 
 # read-only, offline, host-only gate: partition and script suites, format check, host clippy and tests
 [group("composite")]
-verify: partition-check partition-check-tests flash-image-tests tick-topic-tests fmt-check clippy-pure test
+verify: partition-check partition-check-tests flash-image-tests save-image-tests ddi-bundle-tests tick-topic-tests fmt-check clippy-pure test
 
-# device gate: check and lint the ESP-IDF firmware for the C6 target (incl. the unhealthy demo feature)
+# device gate: check and lint the ESP-IDF firmware for the C6 target (default, `ddi-lab` and the unhealthy demo feature)
 [group("composite")]
 verify-fw: check clippy
 
@@ -86,21 +98,27 @@ ci: verify deny verify-fw
 # build release firmware for a named chip target (release-only, no debug build; e.g. idf_c6_rgb_clock, idf_c3_rgb_clock)
 [group("build")]
 build example="idf_c6_rgb_clock":
-    scripts/build.sh "{{example}}"
+    scripts/build.sh "{{ example }}"
 
-# build demo-only unhealthy image for OTA hardware scenario 6 (never marks itself valid, reboots after 15 s so the bootloader rolls back); never enabled by `build`/`flash`
+# build the lab-only DDI image (DDI client over plain HTTP; needs DDI_BASE_URL in `.env` or the shell); never a release image
+[group("build")]
+build-lab example="idf_c6_rgb_clock":
+    scripts/build.sh "{{ example }}" --features ddi-lab
+
+# build demo-only unhealthy lab image (never marks itself valid, reboots after 15 s so the bootloader rolls back; implies `ddi-lab`); never enabled by `build`/`flash`
 [group("build")]
 build-unhealthy example="idf_c6_rgb_clock":
-    scripts/build.sh "{{example}}" --features unhealthy
+    scripts/build.sh "{{ example }}" --features unhealthy
 
 # check the firmware for a named chip target (e.g. idf_c6_rgb_clock, idf_c3_rgb_clock)
 [group("build")]
 check example="idf_c6_rgb_clock":
     #!/usr/bin/env bash
     set -euo pipefail
-    eval "$(scripts/chip-env.sh '{{example}}')"
-    printf 'Checking %s (MCU=%s, target=%s)...\n' '{{example}}' "$MCU" "$TARGET"
+    eval "$(scripts/chip-env.sh '{{ example }}')"
+    printf 'Checking %s (MCU=%s, target=%s)...\n' '{{ example }}' "$MCU" "$TARGET"
     MCU="$MCU" cargo check --target "$TARGET"
+    MCU="$MCU" DDI_BASE_URL={{ quote(ddi_check_url) }} cargo check --target "$TARGET" --features ddi-lab
 
 # validate partitions.csv against ESP-IDF alignment, capacity, and NVS-stability rules
 [group("build")]
@@ -117,6 +135,16 @@ partition-check-tests:
 flash-image-tests:
     @scripts/flash-image-tests.sh
 
+# run the hardware-free regression suite for the saved-image path (flash-image.sh save mode, save-image.sh git guard)
+[group("build")]
+save-image-tests:
+    @scripts/save-image-tests.sh
+
+# run the build-free regression suite for scripts/ddi-bundle.sh (fake espflash; version, chip-id, size and leftover-file guards)
+[group("build")]
+ddi-bundle-tests:
+    @scripts/ddi-bundle-tests.sh
+
 # run the host unit tests for the build-time tick-topic override (build_support/tick_topic.rs)
 [group("build")]
 tick-topic-tests:
@@ -125,14 +153,19 @@ tick-topic-tests:
 # generate the real flashable app image for a chip target and check it fits both OTA slots (needs a prior `just build`)
 [group("build")]
 image-check example="idf_c6_rgb_clock":
-    scripts/check-image-size.sh "{{example}}"
+    scripts/check-image-size.sh "{{ example }}"
 
 # ── Flash & Monitor ──────────────────────────────────────────────────────────
 
 # build and flash firmware; does not open the monitor — run `just monitor` after (e.g. idf_c6_rgb_clock, idf_c3_rgb_clock)
 [group("flash")]
 flash example="idf_c6_rgb_clock":
-    scripts/flash.sh "{{example}}"
+    scripts/flash.sh "{{ example }}"
+
+# build and flash the lab-only DDI image (needs DDI_BASE_URL in `.env` or the shell); does not open the monitor
+[group("flash")]
+flash-lab example="idf_c6_rgb_clock":
+    FIRMWARE_FEATURES=ddi-lab scripts/flash.sh "{{ example }}"
 
 # Erases NVS too, so the device must be re-provisioned over SoftAP afterwards.
 [doc('one-time first flash of the OTA layout: validate, full-erase, then flash')]
@@ -178,44 +211,29 @@ run example="idf_c6_rgb_clock": (flash example)
 [doc('identify the chip on the serial port before flashing (honours ESPFLASH_PORT)')]
 [group("flash")]
 board-info:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    port="$(scripts/detect-port.sh)"
-    port_args=()
-    if [ -n "$port" ]; then
-        port_args=(--port "$port")
-    fi
-    espflash board-info ${port_args[@]+"${port_args[@]}"}
+    scripts/espflash.sh board-info
+
+# The SoftAP-MAC rule lives in scripts/device-id.sh, which also takes a MAC as its argument.
+[doc("print the attached board's device id and DDI controller id, rgb-clock-<xxxx> (resets the board; honours ESPFLASH_PORT)")]
+[group("flash")]
+device-id:
+    scripts/device-id.sh
 
 # open serial monitor (no flash)
 [group("flash")]
 monitor:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    port="$(scripts/detect-port.sh)"
-    port_args=()
-    if [ -n "$port" ]; then
-        port_args=(--port "$port")
-    fi
-    espflash monitor ${port_args[@]+"${port_args[@]}"}
+    scripts/espflash.sh monitor
 
 # capture the serial monitor to a file without a TTY, for agents and background logging (e.g. tmp/boot.log)
 [group("flash")]
 monitor-log file *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    port="$(scripts/detect-port.sh)"
-    port_args=()
-    if [ -n "$port" ]; then
-        port_args=(--port "$port")
-    fi
-    espflash monitor --non-interactive ${port_args[@]+"${port_args[@]}"} {{ args }} > '{{ file }}' 2>&1
+    scripts/espflash.sh monitor --non-interactive {{ args }} > '{{ file }}' 2>&1
 
-# erase ESP32 flash (needed after sdkconfig changes)
+# erase the whole flash, NVS included, so the board must be provisioned again (refuses an ambiguous port)
 [confirm]
 [group("flash")]
 erase-flash:
-    espflash erase-flash
+    scripts/espflash.sh --require-port erase-flash
 
 # print the esp-idf-sys-built bootloader path that `just flash` will use for a chip target (e.g. idf_c6_rgb_clock, idf_c3_rgb_clock)
 [group("flash")]
@@ -231,85 +249,46 @@ bootloader-path example="idf_c6_rgb_clock":
     fi
     printf '%s\n' "$bl"
 
-# ── OTA ──────────────────────────────────────────────────────────────────────
+# The image holds the `.env` portal prefill (SSID, broker host, MQTT user), never a password
+# or token, so `image` must be a path git ignores (tmp/…) or one outside the repo.
+[doc("build a chip target and save its merged whole-flash image (IDF bootloader at 0x0, table at 0x8000) to `image`; touches no board")]
+[group("flash")]
+save-image example image:
+    scripts/save-image.sh "{{ example }}" "{{ image }}"
 
-# stage the OTA image, hash it, and write the manifest under tmp/ota/. Demo knobs are env vars (just arguments are positional): OTA_VARIANT=unhealthy builds the demo image; OTA_VERSION=X rebuilds with X baked in and advertised in the manifest; OTA_TRUNCATE=N stages a `<variant>-truncated` artefact serving only the first N bytes under the full-image hash; OTA_TICK_TOPIC=T subscribes the image to T instead of `tick` so it fails its health check with the publisher still running
-[group("ota")]
-ota-image example="idf_c6_rgb_clock" variant=env_var_or_default("OTA_VARIANT", "release") version=env_var_or_default("OTA_VERSION", "") truncate=env_var_or_default("OTA_TRUNCATE", "0") tick_topic=env_var_or_default("OTA_TICK_TOPIC", ""):
+# ── DDI (lab) ────────────────────────────────────────────────────────────────
+
+# build the lab DDI image with `version` baked in and write the fleet's release bundle (.bin, .bin.sha256, .bin.version, .bin.chip) under tmp/ddi-bundle/; DDI_VARIANT=unhealthy bundles the demo image that fails its health check
+[group("ddi")]
+ddi-bundle example version:
+    scripts/ddi-bundle.sh "{{ example }}" "{{ version }}"
+
+# ── Remote bench ─────────────────────────────────────────────────────────────
+
+# Runs before the build: a missing checkout fails fast, and DRY_RUN=1 is refused because
+# the save would only print, while pi-flash (which has no dry run) uploads a stale image.
+[private]
+_bench-checkout:
+    @[ "${DRY_RUN:-0}" != "1" ] || { printf 'bench-flash: DRY_RUN=1 would upload a stale image; use `just --dry-run bench-flash` or `DRY_RUN=1 just save-image …`\n' >&2; exit 1; }
+    @[ -f "{{ bench_dir }}/justfile" ] || { printf 'bench-flash: no rustyfarian-bench checkout at %s; clone it there or set RUSTYFARIAN_BENCH_DIR\n' "{{ bench_dir }}" >&2; exit 1; }
+
+# later: once a rustyfarian-bench release ships `flash`, call `rustyfarian-bench flash --part … IMAGE --wait`
+# with RUSTYFARIAN_BENCH_URL, RUSTYFARIAN_BENCH_TOKEN and RUSTYFARIAN_BENCH_CA instead of the checkout's pi-flash.
+[doc("save `example` to tmp/bench/<example>.bin and flash it onto bench part `part` without SSH; bench-esp32c3-mini1 takes idf_c3_rgb_clock (no C6 part yet; the bench refuses a chip mismatch); extra args after part and example go to pi-flash")]
+[group("bench")]
+[positional-arguments]
+bench-flash part="bench-esp32c3-mini1" example="idf_c3_rgb_clock" *args: _bench-checkout (save-image example "tmp/bench/" + example + ".bin")
     #!/usr/bin/env bash
     set -euo pipefail
-    case "{{variant}}" in
-        release)   build_recipe=build ;;
-        unhealthy) build_recipe=build-unhealthy ;;
-        *) printf 'Error: variant must be "release" or "unhealthy", got "%s"\n' "{{variant}}" >&2; exit 1 ;;
-    esac
-    # A version override is baked into the image (build.rs reads it), so the
-    # binary reports exactly what the manifest advertises. The next plain
-    # `just build` rebuilds with the package version again.
-    # Trimmed exactly as build.rs trims it, so a blank value means no override
-    # and the staging directory names the topic the image really carries.
-    tick_topic={{quote(tick_topic)}}
-    tick_topic="${tick_topic#"${tick_topic%%[![:space:]]*}"}"
-    tick_topic="${tick_topic%"${tick_topic##*[![:space:]]}"}"
-    if [ -n "$tick_topic" ]; then
-        # Demo-only tick topic, validated and baked in by build.rs; unset again
-        # for the next plain build, which then subscribes to `tick`.
-        export TICK_TOPIC_OVERRIDE="$tick_topic"
-    fi
-    if [ -n "{{version}}" ]; then
-        FIRMWARE_VERSION_OVERRIDE="{{version}}" just "$build_recipe" "{{example}}"
-    else
-        just "$build_recipe" "{{example}}"
-    fi
-    scripts/check-image-size.sh "{{example}}"
-    scripts/ota-artifact.sh "{{example}}" "{{variant}}" "{{version}}" "{{truncate}}" "$tick_topic"
-
-# serve the OTA artefacts from tmp/ota/ over plain HTTP on OTA_PORT (default 8000, the port `ota-image` bakes into the manifest URL); requires `just ota-image` first
-[group("ota")]
-ota-serve port=env_var_or_default("OTA_PORT", "8000"):
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ ! -d tmp/ota ]; then
-        printf 'Error: tmp/ota directory does not exist\n' >&2
-        printf 'Run `just ota-image` first to stage the OTA image and manifest.\n' >&2
-        exit 1
-    fi
-    printf 'Serving OTA artefacts from tmp/ota/ on port %s\n' "{{port}}"
-    printf 'Note: http.server sends Content-Length, which the firmware downloader requires.\n' >&2
-    printf 'This is plain HTTP for LAN demo only — not for production.\n' >&2
-    python3 -m http.server --directory tmp/ota --bind 0.0.0.0 {{port}}
-
-# publish the last artefact staged by `just ota-image` to ota/command (broker from .env; DRY_RUN=1 prints the command)
-[group("ota")]
-ota-push example="idf_c6_rgb_clock":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command_file="tmp/ota/{{example}}/command.json"
-    if [ ! -f "$command_file" ]; then
-        printf 'Error: nothing staged for %s; run `just ota-image %s` first.\n' "{{example}}" "{{example}}" >&2
-        exit 1
-    fi
-    scripts/ota-mqtt.sh pub ota/command "$(cat "$command_file")"
-
-# ask the device running `from` to roll back to its previous slot (operator rollback; DRY_RUN=1 prints the command)
-[group("ota")]
-ota-rollback from:
-    scripts/ota-mqtt.sh pub ota/command '{"action":"rollback","from":"{{from}}"}'
-
-# publish a raw payload to ota/command, e.g. `just ota-pub not-json` (DRY_RUN=1 prints the command)
-[group("ota")]
-ota-pub payload:
-    scripts/ota-mqtt.sh pub ota/command {{quote(payload)}}
-
-# follow the device's OTA status messages on ota/status (Ctrl-C to stop)
-[group("ota")]
-ota-status:
-    scripts/ota-mqtt.sh sub ota/status
+    # Absolute: the bench recipe resolves a relative path against its own checkout.
+    image="{{ justfile_directory() }}/tmp/bench/$2.bin"
+    # This justfile exports its build target dirs; keep them out of the bench's own recipes.
+    env -u CARGO_TARGET_DIR -u ESP_IDF_TOOLS_INSTALL_DIR "{{ just_executable() }}" --justfile "{{ bench_dir }}/justfile" pi-flash --part "$1" "$image" --wait "${@:3}"
 
 # ── Bare-metal esp-hal (ESP32-C3; C6 in M4) ────────────────────────────────────────────
 
 # type-check the bare-metal esp-hal crate for a chip (e.g. c3)
-[group('hal')]
+[group("hal")]
 check-hal chip="c3":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -319,7 +298,7 @@ check-hal chip="c3":
     cargo +esp check {{ hal_flags }} --target "$HAL_TARGET" --features "$HAL_FEATURE" --bins
 
 # lint the bare-metal esp-hal crate for a chip with warnings-as-errors (e.g. c3)
-[group('hal')]
+[group("hal")]
 clippy-hal chip="c3":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -329,7 +308,7 @@ clippy-hal chip="c3":
     cargo +esp clippy {{ hal_flags }} --target "$HAL_TARGET" --features "$HAL_FEATURE" --bins -- -D warnings
 
 # build the bare-metal firmware for a chip, always --release as esp-hal recommends (e.g. c3)
-[group('hal')]
+[group("hal")]
 build-hal chip="c3":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -339,22 +318,22 @@ build-hal chip="c3":
     cargo +esp build --release {{ hal_flags }} --target "$HAL_TARGET" --features "$HAL_FEATURE"
 
 # build and flash the bare-metal firmware for a chip, no monitor; reuses the IDF bootloader when built, else espflash's bundled one (e.g. c3)
-[group('hal')]
+[group("hal")]
 flash-hal chip="c3": (build-hal chip)
     scripts/flash-hal.sh '{{ chip }}' '{{ hal_dir }}' '{{ idf_dir }}'
 
 # build, flash and monitor the bare-metal firmware for a chip; the monitor decodes backtraces against the ELF (e.g. c3)
-[group('hal')]
+[group("hal")]
 run-hal chip="c3": (build-hal chip)
     scripts/flash-hal.sh '{{ chip }}' '{{ hal_dir }}' '{{ idf_dir }}' --monitor
 
 # clean the bare-metal build artifacts
-[group('hal')]
+[group("hal")]
 clean-hal:
     cargo clean --target-dir {{ hal_dir }}
 
 # bare-metal gate: type-check and lint the esp-hal crate (not part of `verify`: needs build-std and a long first compile)
-[group('hal')]
+[group("hal")]
 verify-hal chip="c3": (check-hal chip) (clippy-hal chip)
 
 # ── Code Quality ─────────────────────────────────────────────────────────────
@@ -369,18 +348,22 @@ fmt:
 fmt-check:
     cargo fmt --all -- --check
 
-# run clippy on the entire workspace (firmware, ESP-IDF target)
+# run clippy on the firmware for a named chip target, default, `ddi-lab` and unhealthy (e.g. idf_c6_rgb_clock, idf_c3_rgb_clock)
 [group("quality")]
-clippy:
-    cargo clippy -- -D warnings
-    cargo clippy --features unhealthy -- -D warnings
+clippy example="idf_c6_rgb_clock":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$(scripts/chip-env.sh '{{ example }}')"
+    MCU="$MCU" cargo clippy --target "$TARGET" -- -D warnings
+    MCU="$MCU" DDI_BASE_URL={{ quote(ddi_check_url) }} cargo clippy --target "$TARGET" --features ddi-lab -- -D warnings
+    MCU="$MCU" DDI_BASE_URL={{ quote(ddi_check_url) }} cargo clippy --target "$TARGET" --features unhealthy -- -D warnings
 
-# run clippy on the pure clock-pure crate only (host target — no ESP-IDF toolchain needed)
+# run clippy on the host crates clock-pure and clock-app (host target — no ESP-IDF toolchain needed)
 [group("quality")]
 clippy-pure:
     cargo clippy {{ host_pkgs }} --all-targets --target {{ host_target }} -- -D warnings
 
-# run clock-pure unit tests on host
+# run the clock-pure and clock-app unit tests on host
 [group("quality")]
 test:
     cargo test {{ host_pkgs }} --target {{ host_target }}
@@ -397,7 +380,7 @@ watch:
 
 # ── Documentation ────────────────────────────────────────────────────────────
 
-# build rustdoc for clock-pure
+# build rustdoc for clock-pure and clock-app
 [group("docs")]
 doc:
     cargo doc {{ host_pkgs }} --target {{ host_target }} --no-deps
@@ -475,7 +458,6 @@ setup component="":
     # Tools whose install method is your choice: hints only.
     bash -c '[ "${BASH_VERSINFO[0]}" -ge 4 ]' || echo "hint: partition-check needs bash 4+ on PATH (macOS: brew install bash)"
     command -v act >/dev/null 2>&1 || echo "hint: \`just act\` needs act and Docker (macOS: brew install act)"
-    command -v mqttx >/dev/null 2>&1 || command -v mosquitto_pub >/dev/null 2>&1 || echo "hint: the ota-* MQTT recipes need the mqttx CLI or mosquitto (macOS: brew install mosquitto)"
     just doctor
 
 # report development tooling status (Rust, toolchain, espflash, ldproxy, .env, RAM disk)
@@ -506,7 +488,7 @@ ci-clippy: clippy-pure
 
 # CI job: partition table, partition-validator, flash-script and tick-topic suites, then host tests
 [group("ci")]
-ci-test: partition-check partition-check-tests flash-image-tests tick-topic-tests test
+ci-test: partition-check partition-check-tests flash-image-tests save-image-tests ddi-bundle-tests tick-topic-tests test
 
 # CI job: cargo-deny licenses, advisories, bans and sources
 [group("ci")]
@@ -529,6 +511,9 @@ ci-build:
     else
         echo "ci-build: not in CI, skipping the UART console append to sdkconfig.defaults" >&2
     fi
+    # The lab image is the larger build, so it is the one that outgrows the OTA slots first.
+    DDI_BASE_URL={{ quote(ddi_check_url) }} cargo build --release --features ddi-lab
+    just image-check
     cargo build --release
     just clippy
     just image-check
@@ -540,9 +525,13 @@ ci-build:
         "$out/rustyfarian-rgb-clock" \
         "$out/rustyfarian-rgb-clock.bin"
 
-# CI job: build the C3 firmware and check its image fits the OTA slots
+# CI job: build the C3 firmware, lab image first, and check both images fit the OTA slots
 [group("ci")]
-ci-build-c3: (build "idf_c3_rgb_clock") (image-check "idf_c3_rgb_clock")
+ci-build-c3:
+    DDI_BASE_URL={{ quote(ddi_check_url) }} just build-lab idf_c3_rgb_clock
+    just image-check idf_c3_rgb_clock
+    just build idf_c3_rgb_clock
+    just image-check idf_c3_rgb_clock
 
 # The Wokwi scenarios themselves run in wokwi/wokwi-ci-action; this recipe holds the
 # job's shell steps: `prepare` before the action, `check <startup> <frames>` after it

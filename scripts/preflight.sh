@@ -5,6 +5,8 @@ set -euo pipefail
 # progress and diagnostics go to stderr, so callers can capture just the path.
 #
 # Usage: scripts/preflight.sh <idf_{chip}_{name}>   e.g. idf_c6_rgb_clock
+#   FIRMWARE_FEATURES=<cargo features> builds a feature image, e.g. `ddi-lab`
+#   (`just flash-lab`); unset builds the default image.
 #
 # This exists so `just flash-baseline` can build and validate BEFORE erasing the
 # chip. A compile error, a missing or ambiguous bootloader, or a bootloader built
@@ -30,7 +32,8 @@ target_dir="${CARGO_TARGET_DIR:-target}"
 "$SCRIPT_DIR/check-partitions.sh" >&2
 
 printf 'Building %s (MCU=%s, target=%s)...\n' "$example" "$MCU" "$TARGET" >&2
-MCU="$MCU" cargo build --release --target "$TARGET" >&2
+features="${FIRMWARE_FEATURES:-}"
+MCU="$MCU" cargo build --release --target "$TARGET" ${features:+--features "$features"} >&2
 
 app="$target_dir/$TARGET/release/rustyfarian-rgb-clock"
 if [ ! -f "$app" ]; then

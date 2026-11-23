@@ -21,8 +21,9 @@ Three layers with a strict hardware boundary:
 - **`src/main.rs`** — Entry point.
   - GPIO18 (C6) / GPIO4 (C3) = 12-LED NeoPixel ring.
   - GPIO8 = onboard status LED.
-  - Flow: Wi-Fi init → MQTT connect (`MqttBuilder::subscribe`) → OTA runtime → `clock-app` thread → OTA health policy.
-  - Main thread parks after the health policy; the clock app, MQTT event loop and OTA worker run on background threads.
+  - Flow: Wi-Fi init → MQTT connect (`MqttBuilder::subscribe`) → `clock-app` thread; in `ddi-lab` the DDI runtime starts at link-up or the failure deadline, then the health policy runs on the main thread.
+  - Default build: the main thread parks after setup; the clock app and MQTT event loop run on background threads.
+  - `ddi-lab` build: the clock app, MQTT event loop and DDI worker run on background threads, and the main thread runs the health policy.
 
 External crates (from crates.io, path-patched locally via `[patch.crates-io]` in `.cargo/config.toml`):
 - `rustyfarian-ws2812` → `ferriswheel` (effects), `rustyfarian-esp-idf-ws2812` (RMT driver)
@@ -33,7 +34,7 @@ External crates (from crates.io, path-patched locally via `[patch.crates-io]` in
 First-time setup:
 
 ```sh
-cp .env.example .env   # optional portal prefill: WIFI_SSID, MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_CLIENT_ID
+cp .env.example .env   # optional portal prefill: WIFI_SSID, MQTT_HOST, MQTT_PORT, MQTT_USER (MQTT_CLIENT_ID is read by the esp-hal build only); DDI_BASE_URL is required by ddi-lab builds
 ```
 
 All operations go through `just` — run `just --list` to see all recipes:
@@ -56,6 +57,13 @@ just run         # build, flash, and open serial monitor
 just monitor     # open serial monitor only
 ```
 
+Remote bench (no local board; touches shared hardware, so leave `bench-flash` to the user):
+
+```sh
+just save-image idf_c3_rgb_clock tmp/bench/idf_c3_rgb_clock.bin   # merged whole-flash image, no board
+just bench-flash bench-esp32c3-mini1 idf_c3_rgb_clock              # save, then flash a bench part via ../rustyfarian-bench pi-flash
+```
+
 Bare-metal esp-hal clock (ESP32-C3 only, no OTA). These recipes use the `esp` toolchain (`cargo +esp`, installed with `espup`) and default to the `c3` chip argument:
 
 ```sh
@@ -71,7 +79,7 @@ just clean-hal       # remove the hal target directory
 The hal crate is `crates/rustyfarian-esp-hal-rgb-clock`; it is not a workspace default member, so bare `cargo` and the IDF recipes stay on the ESP-IDF target.
 It provisions Wi-Fi at runtime through SoftAP and reads only the non-secret `.env` prefill values at build time.
 
-Wi-Fi and MQTT settings are entered at runtime on the SoftAP provisioning portal; `build.rs` bakes in only the optional, non-secret `.env` prefill values.
+Wi-Fi and MQTT settings are entered at runtime on the SoftAP provisioning portal; `build.rs` bakes in only the optional, non-secret `.env` prefill values, plus `DDI_BASE_URL` for `ddi-lab` builds.
 
 MQTT time format (topic `tick`):
 
@@ -95,7 +103,7 @@ Brightness is applied via `scale_color` at render time.
 
 **Never call the MQTT client from an MQTT event callback.**
 The ESP-IDF client deadlocks when a callback subscribes or publishes, because the event loop is blocked (ADR-005).
-Topics are subscribed through `MqttBuilder::subscribe`; the network crate resubscribes on every reconnect (see `src/main.rs`).
+Topics (`tick`, `clock/config`, and in `ddi-lab` the nudge topic `rustyfarian/ota/<device-id>/nudge`) are subscribed through `MqttBuilder::subscribe`; the network crate resubscribes on every reconnect (see `src/main.rs`).
 No `on_message` callback is registered: the clock app drains `receive()`, and IDF delivers each message to the callback or the queue, never both.
 
 **Error handling:** `anyhow::Result` + `.context()` in firmware; no `unwrap()` or `expect()` outside `main` or `#[cfg(test)]`.

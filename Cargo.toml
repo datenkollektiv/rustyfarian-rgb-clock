@@ -30,7 +30,7 @@ clock-app = { path = "crates/clock-app" }
 # fails to accept the ws2812 LED (see docs/project-lore.md "Toolchain &
 # Dependencies"). Bump these crates together and re-verify, rather than
 # upgrading one in isolation.
-# Known split (accepted): ws2812 0.9 brings pennant 0.9, while network 0.7 below
+# Known split (accepted): ws2812 0.9 brings pennant 0.9, while network 0.8 below
 # still uses pennant 0.7. It builds because neither tier hands the LED to network
 # (`WiFiManager::new_without_led`, esp-hal ws2812 without `pennant`). Close it when
 # network moves to the ws2812 0.9 wave.
@@ -39,17 +39,18 @@ clock-app = { path = "crates/clock-app" }
 ferriswheel = "0.9.0"
 rustyfarian-esp-idf-ws2812 = "0.9.0"
 
-# External crates from rustyfarian-network — published to crates.io at 0.7.0.
+# External crates from rustyfarian-network — published to crates.io at 0.8.0.
 # Every manifest naming rustyfarian-esp-idf-network, rustyfarian-esp-hal-network or
 # juggler must use the same version, so the graph has ONE juggler and the parity
 # traits stay one type (docs/adr/006-one-clock-app-on-both-tiers.md).
-# `default = []`, so an explicit feature list is required; `ota` adds `OtaSession`,
-# the `ota::runtime` consumer runtime and the `juggler::ota` re-exports.
-rustyfarian-esp-idf-network = { version = "0.7.0", default-features = false, features = ["wifi", "mqtt", "provisioning", "ota"] }
+# `default = []`, so an explicit feature list is required. The DDI client is not here:
+# the firmware feature `ddi-lab` adds `ota-ddi` and `ota-ddi-insecure-http`
+# (docs/adr/007-ddi-is-the-only-ota-path.md), so the default build carries no OTA code.
+rustyfarian-esp-idf-network = { version = "0.8.0", default-features = false, features = ["wifi", "mqtt", "provisioning"] }
 
 # Platform-agnostic juggler traits (`NetworkLink`, `MqttClient`) for the shared clock app,
 # same version as above. Tier crates add their own features; `mock` is for host tests.
-juggler = { version = "0.7.0", default-features = false, features = ["wifi", "mqtt"] }
+juggler = { version = "0.8.0", default-features = false, features = ["wifi", "mqtt"] }
 
 [package]
 name = "rustyfarian-rgb-clock"
@@ -63,11 +64,10 @@ repository = "https://github.com/datenkollektiv/rustyfarian-rgb-clock"
 keywords = ["esp32", "led", "clock", "ws2812", "mqtt"]
 categories = ["embedded", "hardware-support"]
 
-# ESP-IDF v6 moved esp-mqtt out of the IDF tree into the managed component `espressif/mqtt`.
-# rustyfarian-esp-idf-network 0.7.0 does not declare it yet, so the firmware does.
-# Pinned exactly: a new esp-mqtt should arrive as a reviewed bump, not with a CI run.
-[[package.metadata.esp-idf-sys.extra_components]]
-remote_component = { name = "espressif/mqtt", version = "1.1.0" }
+# The managed component `espressif/mqtt` (esp-mqtt left the IDF tree in v6) is declared by
+# upstream `rustyfarian-esp-idf-network` (`^1.0.0`); declaring it here too makes
+# esp-idf-sys write a duplicate key into `idf_component.yml` and the IDF build fails.
+# Drop this note if a later network release stops declaring it.
 
 [[bin]]
 name = "rustyfarian-rgb-clock"
@@ -82,10 +82,17 @@ opt-level = "z"
 
 [features]
 default = []
-# Demo-only image for OTA hardware scenario 6: never passes its health check and
-# restarts after 15 s without `mark_valid`, so the bootloader rolls back to the
-# previous slot. Built by `just build-unhealthy`; never enabled by `build`/`flash`.
-unhealthy = []
+# Lab image: polls the DDI server over plain HTTP and takes firmware updates from it.
+# Needs `DDI_BASE_URL` at build time (`build.rs` refuses a build without it). The default
+# image carries no OTA code. Built by `just build-lab`.
+ddi-lab = [
+    "rustyfarian-esp-idf-network/ota-ddi",
+    "rustyfarian-esp-idf-network/ota-ddi-insecure-http",
+]
+# Demo-only lab image: never passes its health check and restarts after 15 s, so the
+# bootloader rolls back to the previous slot. Built by `just build-unhealthy`; never
+# enabled by `build`/`flash`.
+unhealthy = ["ddi-lab"]
 
 [dependencies]
 anyhow.workspace = true
@@ -105,3 +112,4 @@ ferriswheel.workspace = true
 [build-dependencies]
 clock-pure.workspace = true
 embuild = "0.33"
+

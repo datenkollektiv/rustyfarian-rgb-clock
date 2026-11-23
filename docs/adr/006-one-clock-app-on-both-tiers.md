@@ -3,6 +3,7 @@
 ## Status
 
 Accepted — 2026-11-04.
+Amended by [ADR-007](007-ddi-is-the-only-ota-path.md).
 Adopts `rustyfarian-network` ADR 022 (tier parity) and the three-rung ladder of `rustyfarian-network` ADR 023 and `rustyfarian-ws2812` ADR 012.
 Applies `rustyfarian-network` ADR 021 (binary-owned providers) to both firmwares.
 Supersedes nothing; [ADR-005](005-no-publishing-from-mqtt-callbacks.md) still governs the IDF callbacks.

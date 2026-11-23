@@ -16,13 +16,7 @@ fn main() {
     //
     // The optional, non-secret portal prefill values (read via `option_env!` in
     // main.rs) are baked at compile time, so rebuild when they change in `.env`.
-    for var in [
-        "WIFI_SSID",
-        "MQTT_HOST",
-        "MQTT_PORT",
-        "MQTT_USER",
-        "MQTT_CLIENT_ID",
-    ] {
+    for var in ["WIFI_SSID", "MQTT_HOST", "MQTT_PORT", "MQTT_USER"] {
         println!("cargo:rerun-if-env-changed={var}");
     }
 
@@ -39,12 +33,12 @@ fn main() {
         }
     }
 
-    // The version the firmware reports and compares OTA offers against. Normally
-    // the package version; `just ota-image version=X` overrides it so a demo
-    // image really carries the version its manifest advertises. A manifest that
-    // promises a version the image does not report is refused at the next boot
-    // (see `src/ota/mod.rs`, `reconcile_boot`), so a manifest-only override
-    // would only ever roll itself back.
+    // The version the firmware reports and compares DDI offers against. Normally
+    // the package version; `just ddi-bundle` overrides it so a bundle really
+    // carries the version the server advertises. A deployment that promises a
+    // version the image does not report is refused at the next boot by the
+    // runtime's boot reconciliation, so a server-only override would only ever
+    // roll itself back.
     println!("cargo:rerun-if-env-changed=FIRMWARE_VERSION_OVERRIDE");
     let firmware_version = match std::env::var("FIRMWARE_VERSION_OVERRIDE")
         .ok()
@@ -68,7 +62,7 @@ fn main() {
     println!("cargo:rustc-env=FIRMWARE_VERSION={firmware_version}");
 
     // The MQTT topic the clock takes its time from. Normally `tick`; demo-only
-    // `OTA_TICK_TOPIC=X just ota-image` points an OTA image at a topic nobody
+    // `TICK_TOPIC_OVERRIDE=X just build-lab` points a lab image at a topic nobody
     // publishes, so the release health check genuinely never sees a fresh tick
     // and the 120 s deadline rollback runs while the shared publisher keeps going.
     // Validation lives in `build_support/tick_topic.rs` so `just tick-topic-tests`
@@ -81,6 +75,31 @@ fn main() {
         println!("cargo:warning=TICK_TOPIC_OVERRIDE in effect: this image subscribes to \"{tick_topic}\", not \"tick\" (OTA demo only)");
     }
     println!("cargo:rustc-env=TICK_TOPIC={tick_topic}");
+
+    // The DDI server the lab image polls, baked by `env!` in `src/ota/mod.rs`. Required
+    // only for `ddi-lab`, so the default build needs no `.env` entry. The trimmed value is
+    // re-emitted so the guard and the use site see the same string.
+    println!("cargo:rerun-if-env-changed=DDI_BASE_URL");
+    if std::env::var_os("CARGO_FEATURE_DDI_LAB").is_some() {
+        let base_url = std::env::var("DDI_BASE_URL")
+            .ok()
+            .map(|u| u.trim().to_string())
+            .filter(|u| !u.is_empty())
+            .unwrap_or_else(|| {
+                panic!(
+                    "DDI_BASE_URL is not set; the ddi-lab image polls the DDI server at this base URL (with the tenant path, e.g. http://host:8080/DEFAULT): set it in .env and rebuild"
+                )
+            });
+        // The value itself stays out of the message. Everything else about the URL is
+        // checked by the client at boot; the scheme is checked here because `https://`
+        // is the likely slip and would otherwise ship in a bundle that refuses to start.
+        if !base_url.starts_with("http://") {
+            panic!(
+                "DDI_BASE_URL must start with http://: the ddi-lab image has no TLS yet and the DDI client refuses any other scheme at boot; fix it in .env"
+            );
+        }
+        println!("cargo:rustc-env=DDI_BASE_URL={base_url}");
+    }
 
     // Soft or sharp hands, baked by `option_env!` in main.rs. The firmware parses it with the
     // same `clock_pure::parse_hands`, so guard and use site cannot disagree.

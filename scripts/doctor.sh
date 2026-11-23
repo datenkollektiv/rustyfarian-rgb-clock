@@ -104,7 +104,7 @@ fi
 if [ -f "$ROOT_DIR/.env" ]; then
     status ".env" "ok" "optional non-secret portal prefill values present"
 else
-    status ".env" "ok" "not present — optional; portal defaults to 1883/rgb-clock, rest typed in the portal"
+    status ".env" "ok" "not present — optional; portal defaults to port 1883, rest typed in the portal"
 fi
 
 # --- Build acceleration (optional) ----------------------------------------
