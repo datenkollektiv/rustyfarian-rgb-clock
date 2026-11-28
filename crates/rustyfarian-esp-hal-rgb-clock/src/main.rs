@@ -17,8 +17,6 @@
 
 use clock_app::{ClockAppConfig, RingPort};
 use core::convert::Infallible;
-use core::net::Ipv4Addr;
-use core::str::FromStr;
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Ticker, Timer};
@@ -421,7 +419,8 @@ async fn park() -> ! {
 /// Builds the MQTT config from static copies of the provisioned strings.
 ///
 /// Logs lengths only and returns `None` when the broker cannot be used: a missing or
-/// oversized field, or a host that is not an IPv4 literal (no DNS on this tier yet).
+/// oversized field. The host may be an IPv4 literal or a DNS name; upstream resolves a
+/// name on every connect.
 fn mqtt_config(cfg: &ProvisioningConfig) -> Option<MqttConfig<'static>> {
     static HOST: StaticCell<heapless::String<MQTT_STR_MAX>> = StaticCell::new();
     static CLIENT: StaticCell<heapless::String<MQTT_STR_MAX>> = StaticCell::new();
@@ -439,14 +438,6 @@ fn mqtt_config(cfg: &ProvisioningConfig) -> Option<MqttConfig<'static>> {
         mqtt.port(),
         mqtt.client_id().map_or(0, str::len)
     );
-    if Ipv4Addr::from_str(host).is_err() {
-        log::error!(
-            "MQTT host (len={}) is not an IPv4 literal; the esp-hal tier has no DNS yet. \
-             Keeping the rainbow - press BOOT after a reset and enter the broker's IPv4 address",
-            host.len()
-        );
-        return None;
-    }
     let client_id = clock_pure::prefill_or(mqtt.client_id(), DEVICE_NAME);
     let (Some(host), Some(client_id)) = (static_str(&HOST, host), static_str(&CLIENT, client_id))
     else {

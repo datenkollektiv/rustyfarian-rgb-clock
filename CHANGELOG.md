@@ -15,6 +15,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The `unhealthy` demo feature now implies `ddi-lab`.
 - A `ddi-lab` image that is pending verification and would need the portal rolls back to the previous image instead of waiting there.
 - A `ddi-lab` image counts a tick as healthy only when the ring write succeeded.
+- BOOT-button portal re-entry on the ESP-IDF clock (upstream `WifiMqttBoot::load_with_reentry`): a press within 2 s of boot reopens the portal and keeps the stored record, a 3 s hold erases it first; a pending `ddi-lab` image rolls back before either, keeping the record, and one whose slot state cannot be read skips the erase.
+- The esp-hal clock accepts a broker DNS name as well as an IPv4 literal; upstream network 0.8.0 resolves it on every connect.
 - just: `build-lab`, `flash-lab` and `ddi-bundle` (writes `tmp/ddi-bundle/<example>-v<version>.bin` with `.sha256`, `.version` and `.chip` sidecars).
 - just: `save-image example image` writes the merged whole-flash image (IDF bootloader at 0x0, partition table, app) without touching a board, and refuses a path git would track.
 - just: `bench-flash part example` saves the image to `tmp/bench/` and flashes it onto a rustyfarian-bench part through the bench checkout's `pi-flash`, without SSH.

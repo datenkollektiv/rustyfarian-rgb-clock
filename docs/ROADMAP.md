@@ -29,7 +29,7 @@ Items move to `Ready` when they have a feature document in `docs/features/`.
 timeline
     title Rustyfarian RGB Clock Roadmap
 
-    Ready     : esp-hal clock — bare-metal C3 build next to the IDF firmware, M1 and M2 (provisioning, Wi-Fi, BOOT re-entry) hardware-validated, M3 MQTT tick next, OTA deferred to an upstream esp-hal runtime port (feature-doc) (in progress)
+    Ready     : esp-hal clock — bare-metal C3 build next to the IDF firmware, M1 and M2 (provisioning, Wi-Fi, BOOT re-entry) hardware-validated, M3 MQTT tick next (broker as IPv4 literal or DNS name), OTA through the upstream esp-hal DDI client once rustyfarian-network releases it (feature-doc) (in progress)
               : One clock app, two tiers — shared async tick app over the upstream parity traits, ladder logic in clock-pure, delivers M3 (ADR-006) (feature-doc) (in progress)
               : Soft hands — opt-in render mode spilling each hand across its two adjacent LEDs, sharp stays default (feature-doc) (in progress)
               : Hand shapes v2 — retained clock/config MQTT message sets mode, glow width, second-hand comet tail and brightness at runtime (feature-doc) (in progress)

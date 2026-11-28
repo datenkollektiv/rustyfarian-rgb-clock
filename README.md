@@ -149,19 +149,20 @@ See [docs/features/archive/wifi-softap-provisioning-v1.md](docs/features/archive
 ### Reprovisioning & recovery
 
 To change credentials — or recover from a mistyped password, a broker change, or a renamed/vanished
-Wi-Fi network — clear the stored config and reboot back into the portal:
+Wi-Fi network — reopen the portal with the BOOT button, no cable needed:
 
-```sh
-just erase-flash
-```
+1. Press and release RESET, then press BOOT right away: the clock watches for it during the first 2 s of every boot.
+2. Release BOOT before 3 s to reopen the portal with the stored settings prefilled, or hold it for 3 s to erase them first.
 
-Then power-cycle the device, join the open `Rustyfarian-XXXX` access point, open the captive portal, and
-submit the new Wi-Fi + MQTT details.
-This requires host tooling and a cable today; a cable-free BOOT-button trigger is a planned follow-up.
+Do not hold BOOT through the reset, because that enters ROM download mode.
+The ring gives no cue during the window; on a serial console the window opens with `Re-entry: press BOOT now`.
+A `ddi-lab` image that is pending verification rolls back to the previous image without opening the portal or erasing the stored settings, so press BOOT again after that reboot.
+Then join the open `Rustyfarian-XXXX` access point, open the captive portal, and submit the new Wi-Fi + MQTT details.
+With a cable, `just erase-flash` clears the stored config too.
 
 The provisioning AP is **open (no password)** by default — a conscious tradeoff for local, physical,
 first-boot setup, not a convenience default.
-It is reachable only while the device is unprovisioned and is never exposed over the joined network.
+It comes up only when no usable record is stored (or, on a `ddi-lab` image, no valid token) or after a BOOT press, and is never exposed over the joined network.
 See the [threat model](docs/features/archive/wifi-softap-provisioning-v1.md#security-stance--threat-model) for the
 accepted residual risk and the WPA2 hardening path.
 
@@ -174,9 +175,10 @@ It needs the `esp` toolchain from `espup`, and the recipes take the chip as an a
 just run-hal c3
 ```
 
-The ring shows a rainbow at boot and, once connected, a static 12:34:56 (blue LED 11, green LED 5, red LED 10) — the hands do not move until MQTT time lands.
+The ring shows a rainbow at boot and the clock face from the first valid MQTT `tick` on, through the same shared clock app as the ESP-IDF firmware.
 SoftAP provisioning, Wi-Fi station mode and BOOT-button portal re-entry are validated on the C3.
-MQTT time and OTA are not in this tier yet.
+MQTT time awaits a C3 hardware run, as does a broker given as a DNS name rather than an IPv4 address.
+OTA is not in this tier yet.
 The two tiers use different partition tables and provisioning stores, so moving a board between them needs a full `just flash` and re-provisioning.
 Design and milestones: [docs/features/esp-hal-clock-v1.md](docs/features/esp-hal-clock-v1.md).
 
