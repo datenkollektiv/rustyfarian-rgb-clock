@@ -91,7 +91,11 @@ pub fn restart_after_failed_start(error: &anyhow::Error) -> ! {
 /// to [`restart_after_failed_start`]. An image flashed over serial is not pending and
 /// reaches the portal. An unreadable slot state counts as not pending, so a read
 /// error never locks a fresh board out of provisioning.
-pub fn roll_back_if_pending_before_portal() {
+///
+/// Returns whether the slot state was read: `false` means the image may still be
+/// pending, so a caller must not take an irreversible step such as erasing the
+/// stored record.
+pub fn roll_back_if_pending_before_portal() -> bool {
     match read_hardware_facts(BusyRetry::default()) {
         Ok(facts) if facts.running_state == SlotState::PendingVerify => {
             log::error!(
@@ -104,8 +108,11 @@ pub fn roll_back_if_pending_before_portal() {
             };
             restart_after_failed_start(&error.context("rollback of the pending image failed"));
         }
-        Ok(_) => {}
-        Err(e) => log::warn!("Cannot read the running slot state ({e:?}); opening the portal"),
+        Ok(_) => true,
+        Err(e) => {
+            log::warn!("Cannot read the running slot state ({e:?}); opening the portal");
+            false
+        }
     }
 }
 

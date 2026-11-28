@@ -198,8 +198,6 @@ jobs:
 4. Configure udev rules for stable device naming
 5. Install GitHub Actions self-hosted runner
 
-See `review-queue/hil-testbed/README.md` for detailed setup instructions.
-
 #### 3.3 udev Rules
 
 Create `/etc/udev/rules.d/99-esp32-rgb-clock.rules`:

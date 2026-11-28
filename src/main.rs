@@ -6,6 +6,8 @@ use crate::rgb_clock::IdfRing;
 use anyhow::Context;
 use clock_app::ClockAppConfig;
 use clock_pure::{parse_hands, prefill_or, ClockColors};
+use esp_idf_hal::delay::FreeRtos;
+use esp_idf_hal::gpio::{InputPin, PinDriver, Pull};
 use esp_idf_hal::modem::Modem;
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
@@ -13,13 +15,13 @@ use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use rustyfarian_esp_idf_network::mqtt::{MqttBuilder, QoS};
 use rustyfarian_esp_idf_network::provisioning::{
     run_wifi_mqtt_portal, BootConfig, DeviceName, PortalConfig, PortalDefaults, PortalOutcome,
-    ProvisioningEvent, ProvisioningStore, SchemaProfile, WifiMqttBoot, WifiMqttLoadOutcome,
+    ProvisioningEvent, ProvisioningStore, ReentryRequest, SchemaProfile, WifiMqttBoot,
+    WifiMqttLoadOutcome,
 };
 use rustyfarian_esp_idf_network::wifi::WiFiManager;
 use rustyfarian_esp_idf_ws2812::Ws2812Rmt;
 use std::sync::Arc;
-#[cfg(feature = "ddi-lab")]
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 // Links the generic timer queue that backs `embassy_time::Timer` on the esp-idf time driver.
 use embassy_time_queue_utils as _;
@@ -42,6 +44,14 @@ const FIRMWARE_VERSION: &str = env!("FIRMWARE_VERSION");
 const DEFAULT_MQTT_PORT: &str = "1883";
 /// Stack of the `clock-app` thread: the async app, ring writes and the nudge intake hook.
 const CLOCK_APP_STACK_SIZE: usize = 16 * 1024;
+/// Holding BOOT this long answers `FactoryReset`; a shorter press answers `Portal`.
+const BOOT_HOLD_MS: u64 = 3000;
+/// How long after the prompt a BOOT press is accepted; every normal boot waits this long.
+const BOOT_WINDOW_MS: u64 = 2000;
+/// A low read is confirmed after this delay, so one noisy read does not open the portal.
+const BOOT_DEBOUNCE_MS: u32 = 20;
+/// Poll interval for the BOOT window and while BOOT is held.
+const BOOT_POLL_MS: u32 = 20;
 
 fn main() -> anyhow::Result<()> {
     // The DDI health dwell and failure deadline are measured from here: the
@@ -97,14 +107,53 @@ fn start(#[cfg(feature = "ddi-lab")] booted_at: Instant) -> anyhow::Result<()> {
     let clock_driver = Ws2812Rmt::new(peripherals.pins.gpio18)?;
     let clock = IdfRing::new(clock_driver);
 
-    // Load the stored Wi-Fi + MQTT config, or fall into provisioning. The network
-    // crate's `WifiMqttBoot::load` is modem-free, so on the provisioned path we
-    // still own `peripherals.modem` for the STA boot; only the portal path claims
-    // it. See docs/features/archive/wifi-softap-provisioning-v1.md.
-    let boot = match WifiMqttBoot::load(nvs.clone()).context("failed to read provisioning store")? {
+    // Ask the BOOT re-entry hook, then load the stored Wi-Fi + MQTT config, or fall
+    // into provisioning. The hook runs before the store is read, and the load is
+    // modem-free, so on the provisioned path we still own `peripherals.modem` for the
+    // STA boot; only the portal path claims it.
+    // See docs/features/archive/wifi-softap-provisioning-v1.md.
+    let gpio9 = peripherals.pins.gpio9;
+    log::info!(
+        "Re-entry: press BOOT now (within {BOOT_WINDOW_MS} ms) to reopen the portal (hold {BOOT_HOLD_MS} ms to factory-reset)"
+    );
+    let loaded = WifiMqttBoot::load_with_reentry(
+        nvs.clone(),
+        || boot_button_reentry(gpio9),
+        WifiMqttBoot::default_client_id,
+    )
+    .context("failed to read provisioning store")?;
+    let boot = match loaded {
         WifiMqttLoadOutcome::Ready(boot) => boot,
         WifiMqttLoadOutcome::NotProvisioned => {
             log::info!("Not provisioned — entering SoftAP provisioning");
+            return run_provisioning(peripherals.modem, sys_loop, nvs, clock);
+        }
+        WifiMqttLoadOutcome::PortalRequested => {
+            log::info!("Re-entry: portal requested — the stored record is kept");
+            return run_provisioning(peripherals.modem, sys_loop, nvs, clock);
+        }
+        WifiMqttLoadOutcome::FactoryResetRequested => {
+            // A pending update rolls back before the erase, so the previous image keeps
+            // the stored record and the hold can be repeated there. An unreadable slot
+            // state skips the erase: the image may be pending.
+            #[cfg(feature = "ddi-lab")]
+            let erase = ota::roll_back_if_pending_before_portal();
+            #[cfg(not(feature = "ddi-lab"))]
+            let erase = true;
+            // The library never erases. Best-effort: continue into the portal even if
+            // the erase fails or is skipped, so the board stays reachable.
+            if erase {
+                match ProvisioningStore::open(nvs.clone()).and_then(|mut s| s.erase_all()) {
+                    Ok(()) => log::info!("Re-entry: stored record erased"),
+                    Err(e) => {
+                        log::warn!("Re-entry: erase failed ({e:#}); continuing into the portal")
+                    }
+                }
+            } else {
+                log::warn!(
+                    "Re-entry: factory reset skipped, the slot state is unknown; the stored record is kept and the portal can change it"
+                );
+            }
             return run_provisioning(peripherals.modem, sys_loop, nvs, clock);
         }
         WifiMqttLoadOutcome::OtherProfile(profile) => {
@@ -275,6 +324,56 @@ fn run_clock(
     // In a loop: `park` may return spuriously, and returning would drop the DDI handle.
     loop {
         std::thread::park();
+    }
+}
+
+/// The re-entry hook: watches BOOT (GPIO9, active low) for `BOOT_WINDOW_MS` after the
+/// prompt. A normal boot waits the window; a press then blocks while BOOT is held.
+///
+/// GPIO9 is a strapping pin: press BOOT after releasing RESET, because holding it
+/// through reset enters ROM download mode. The hook cannot fail the boot: a pin that
+/// cannot be configured is logged and answers `None`. The `PinDriver` is dropped on
+/// return, releasing GPIO9.
+fn boot_button_reentry(pin: impl InputPin) -> ReentryRequest {
+    let button = match PinDriver::input(pin, Pull::Up) {
+        Ok(button) => button,
+        Err(e) => {
+            log::warn!("BOOT button unavailable ({e}); skipping the re-entry check");
+            return ReentryRequest::None;
+        }
+    };
+
+    let window = Duration::from_millis(BOOT_WINDOW_MS);
+    let window_start = Instant::now();
+    loop {
+        if button.is_low() {
+            FreeRtos::delay_ms(BOOT_DEBOUNCE_MS);
+            if button.is_low() {
+                break;
+            }
+        }
+        if window_start.elapsed() >= window {
+            return ReentryRequest::None;
+        }
+        FreeRtos::delay_ms(BOOT_POLL_MS);
+    }
+
+    log::info!(
+        "BOOT held — release before {BOOT_HOLD_MS} ms to reopen the portal, keep holding to factory-reset"
+    );
+    let hold = Duration::from_millis(BOOT_HOLD_MS);
+    let pressed_at = Instant::now();
+    while button.is_low() && pressed_at.elapsed() < hold {
+        FreeRtos::delay_ms(BOOT_POLL_MS);
+    }
+
+    // Decide from the loop's exit reason: still low means the hold ran out.
+    if button.is_low() {
+        log::info!("BOOT held for {BOOT_HOLD_MS} ms — factory reset requested");
+        ReentryRequest::FactoryReset
+    } else {
+        log::info!("BOOT released early — portal requested");
+        ReentryRequest::Portal
     }
 }
 

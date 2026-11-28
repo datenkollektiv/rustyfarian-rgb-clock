@@ -6,7 +6,7 @@ desk-work: available
 
 # Feature: DDI Client v1
 
-The clock takes firmware updates from the fleet's DDI server through the upstream DDI client (`rustyfarian-esp-idf-network` 0.8.0, fleet profile 0.4.0).
+The clock takes firmware updates from the fleet's DDI server through the upstream DDI client (`rustyfarian-esp-idf-network` 0.8.0, fleet profile 0.5.0).
 The MQTT command and manifest flow leaves the firmware ([ADR-007](../adr/007-ddi-is-the-only-ota-path.md)).
 Requested by the fleet on 2026-11-23; ESP-IDF tier only.
 

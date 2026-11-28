@@ -26,7 +26,7 @@ Missing upstream pieces become feature requests to the upstream repository, or c
 |                                        `rustyfarian-esp-hal-network` by git rev pin | esp-hal provisioning only on unreleased main (`01ff1b9`); `juggler` pin is gone | Local path patch; wait for 0.7       |
 | BOOT (GPIO9) re-entry via `gate_reentry` | Upstream hook (part 6 of portal fallback); recovery without a cable                    | Wait for an esp-hal boot entry point |
 |                     BOOT polled for 2 s after the prompt (bug 003); no ring cue yet | The hal app reaches the hook ~250 ms after reset, too early for one read               | One read like upstream; a 1 s window |
-|                               Broker is an IPv4 literal; DNS request filed upstream | esp-hal MQTT has no DNS yet (upstream ADR 019 §2)                                      | Contribute DNS before M3             |
+| Broker is an IPv4 literal or a DNS name | Upstream resolves names since network 0.7.0; the local IPv4 check is gone | IPv4 literals only, DNS names refused |
 |                                                                  OTA left out of v1 | esp-hal tier has `EspHalOtaManager` only, no runtime                                   | Hand-roll an OTA runtime locally     |
 |                                         `clock-pure` becomes `no_std` outside tests | It uses nothing from `std` already                                                     | Copy the logic into the hal crate    |
 |                                       Follow the knob build pattern (ADR 006 there) | One config, `-Zbuild-std=core,alloc` per recipe, `target/hal`                          | Second workspace                     |
@@ -114,3 +114,4 @@ Missing upstream pieces become feature requests to the upstream repository, or c
 - 2026-10-30 — Pin moved from `bae2dc4` to `01ff1b9`; the second `juggler` git pin is dropped; `check-hal`, `clippy-hal`, `build-hal`, `verify` and `build` pass
 - 2026-10-31 — Pin move hardware-validated on the C3 (portal, short press, 3 s erase, commit/reboot); boot logs the fixed time; README states the static face
 - 2026-11-05 — M3 implemented via the shared clock app; pin moved to `a53c434` (temporary local source); `verify-hal`, `build-hal` green; not yet flashed
+- 2026-11-27 — Dropped the local IPv4-only broker check; network 0.8.0 resolves DNS names; awaits a C3 run with a hostname broker
